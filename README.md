@@ -67,3 +67,6 @@ import static no.hal.fxml.templateprocessor.FxmlTemplateProcessor.FXML;
 Then use `FXML()`. in front of the template string to process the result with a fresh `FXMLLoader`.
 You can provide a pre-rigged `FXMLLoader` as argument, e.g. with the controller and/or location set, but
 note that it will the modified as a side-effect and hence, should not be reused.
+
+As a convenience, there is an `FXML()` method overload taking an object,
+which is set as the controller of a fresh `FXMLLoader` instance.

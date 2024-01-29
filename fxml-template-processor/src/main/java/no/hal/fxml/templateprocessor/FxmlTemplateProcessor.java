@@ -123,4 +123,10 @@ public class FxmlTemplateProcessor implements StringTemplate.Processor<Node, Run
     public static FxmlTemplateProcessor FXML() {
         return FXML(new FXMLLoader());
     }
+
+    public static FxmlTemplateProcessor FXML(Object controller) {
+        var fxmlLoader = new FXMLLoader();
+        fxmlLoader.setController(controller);
+        return new FxmlTemplateProcessor(fxmlLoader);
+    }
 }

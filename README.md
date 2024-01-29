@@ -1,15 +1,15 @@
 # fxml-template-processor
 
-String templates (preview in Java 21) allow you to inject expression values into Strings,
-so you don't need to use explicit string concatenation, StringBuilder og formatting.
+String templates (preview in Java 21) allow you to inject expression values into strings,
+so you don't need to use explicit string concatenation, StringBuilder or formatting.
 
-The fxml-template-processor project contains a String template processor for FXML,
-so you can use template strings for FXML code and convert to Node structures with FXMLLoader.
+An important point of template strings is building other data types from the string and
+constrain and validate the input accordingly.
+
+The `fxml-template-processor` project contains a String template processor for FXML,
+so you can use template strings for FXML code and convert to `Node` structures with `FXMLLoader`.
 
 ## Current features
-
-An important point of template strings is building other data types and
-accordingly limit and validate input.
 
 Three injection cases are supported
 

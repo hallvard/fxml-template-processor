@@ -78,7 +78,7 @@ public class FxmlTranslator {
 
     public static List<Statement> translateFxml(Document fxmlDocument, ClassLoader classLoader) {
         FxmlTranslator translator = new FxmlTranslator(fxmlDocument, classLoader);
-        translator.translate(fxmlDocument.instanceElement());
+        translator.translateFxml(fxmlDocument.instanceElement());
         return translator.statements;
     }
     public static List<Statement> translateFxml(String fxml, ClassLoader classLoader) throws Exception {
@@ -88,10 +88,10 @@ public class FxmlTranslator {
         return translateFxml(FxmlParser.parseFxml(input), classLoader);
     }
 
-    private Expression translate(FxmlElement fxmlElement) {
+    private Expression translateFxml(FxmlElement fxmlElement) {
         return switch (fxmlElement) {
             case Define define -> {
-                define.children().forEach(this::translate);
+                define.children().forEach(this::translateFxml);
                 yield null;
             }
             case Root root -> {
@@ -119,11 +119,16 @@ public class FxmlTranslator {
         };
     }
 
+    private final static MethodTarget NAMESPACE_TARGET = new ExpressionTarget("getNamespace()");
+
     private void translateId(InstantiationElement instantiationElement) {
         if (instantiationElement.id() != null) {
+            var instantiationExpression = expressionFor(instantiationElement);
+            var idLiteral = Literal.string(instantiationElement.id());
+            emit(new MethodCall(NAMESPACE_TARGET, "put", List.of(idLiteral, instantiationExpression)));
             var clazz = classResolver.resolve(instantiationElement.className());
             reflectionHelper.getSetter(clazz, "id").ifPresent(setter ->
-                emit(new MethodCall(new ExpressionTarget(expressionFor(instantiationElement)), setter.getName(), Literal.string(instantiationElement.id())))
+                emit(new MethodCall(new ExpressionTarget(instantiationExpression), setter.getName(), idLiteral))
             );
         }
     }
@@ -185,7 +190,7 @@ public class FxmlTranslator {
                 )
             );
         List<Expression> valueExpressions = switch (property) {
-            case PropertyElement propertyElement -> propertyElement.children().stream().map(this::translate).toList();
+            case PropertyElement propertyElement -> propertyElement.children().stream().map(this::translateFxml).toList();
             case PropertyValue propertyValue -> List.of(translateValueExpression(propertyValue.value(), propertyAccess.valueClass));
             case StaticProperty staticProperty -> throw new UnsupportedOperationException();
         };

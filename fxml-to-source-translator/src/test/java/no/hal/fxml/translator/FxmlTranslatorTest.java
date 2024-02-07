@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 import no.hal.fxml.model.FxmlCode.Document;
+import no.hal.fxml.model.JavaCode.ExpressionTarget;
 import no.hal.fxml.model.JavaCode.Literal;
 import no.hal.fxml.model.JavaCode.MethodCall;
 import no.hal.fxml.model.JavaCode.Statement;
@@ -43,6 +44,8 @@ public class FxmlTranslatorTest {
                 VariableDeclaration.instantiation("javafx.scene.layout.Pane", "pane"),
                     // Label label = new Label()
                     VariableDeclaration.instantiation("javafx.scene.control.Label", "label"),
+                        // getNamespace().put("label1", label)
+                        new MethodCall(new ExpressionTarget("getNamespace()"), "put", List.of(Literal.string("label1"), new VariableExpression("label"))),
                         // label.setId("label1")
                         new MethodCall("label", "setId", Literal.string("label1")),
                         // label.setText("Hi!")

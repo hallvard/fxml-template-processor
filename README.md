@@ -11,7 +11,7 @@ so you can use template strings for FXML code and convert to `Node` structures w
 
 ## Current features
 
-Three injection cases are supported
+Three injection cases are supported:
 
 ### attribute values
 

@@ -30,9 +30,12 @@ import no.hal.fxml.model.JavaCode.ClassTarget;
 import no.hal.fxml.model.JavaCode.ConstructorCall;
 import no.hal.fxml.model.JavaCode.Expression;
 import no.hal.fxml.model.JavaCode.ExpressionTarget;
+import no.hal.fxml.model.JavaCode.GetFxmlObjectCall;
 import no.hal.fxml.model.JavaCode.Literal;
 import no.hal.fxml.model.JavaCode.MethodCall;
 import no.hal.fxml.model.JavaCode.MethodTarget;
+import no.hal.fxml.model.JavaCode.Return;
+import no.hal.fxml.model.JavaCode.SetFxmlObjectCall;
 import no.hal.fxml.model.JavaCode.Statement;
 import no.hal.fxml.model.JavaCode.VariableDeclaration;
 import no.hal.fxml.model.JavaCode.VariableExpression;
@@ -76,15 +79,19 @@ public class FxmlTranslator {
         return varNum == 0 ? baseName : baseName + varNum;
     }
 
-    public static List<Statement> translateFxml(Document fxmlDocument, ClassLoader classLoader) {
-        FxmlTranslator translator = new FxmlTranslator(fxmlDocument, classLoader);
-        translator.translateFxml(fxmlDocument.instanceElement());
-        return translator.statements;
+    public record FxmlTranslation(List<Statement> statements, Expression rootExpression) {
     }
-    public static List<Statement> translateFxml(String fxml, ClassLoader classLoader) throws Exception {
+
+    public static FxmlTranslation translateFxml(Document fxmlDocument, ClassLoader classLoader) {
+        FxmlTranslator translator = new FxmlTranslator(fxmlDocument, classLoader);
+        Expression rootExpression = translator.translateFxml(fxmlDocument.instanceElement());
+        translator.emit(new Return(rootExpression));
+        return new FxmlTranslation(translator.statements, rootExpression);
+    }
+    public static FxmlTranslation translateFxml(String fxml, ClassLoader classLoader) throws Exception {
         return translateFxml(FxmlParser.parseFxml(fxml), classLoader);
     }
-    public static List<Statement> translateFxml(InputStream input, ClassLoader classLoader) throws Exception {
+    public static FxmlTranslation translateFxml(InputStream input, ClassLoader classLoader) throws Exception {
         return translateFxml(FxmlParser.parseFxml(input), classLoader);
     }
 
@@ -113,22 +120,20 @@ public class FxmlTranslator {
                 }
                 yield instanceExpression;
             }
-            case Reference reference -> null;
+            case Reference reference -> new GetFxmlObjectCall(reference.source());
             case Include include -> null;
             default -> null;
         };
     }
 
-    private final static MethodTarget NAMESPACE_TARGET = new ExpressionTarget("getNamespace()");
-
     private void translateId(InstantiationElement instantiationElement) {
         if (instantiationElement.id() != null) {
             var instantiationExpression = expressionFor(instantiationElement);
-            var idLiteral = Literal.string(instantiationElement.id());
-            emit(new MethodCall(NAMESPACE_TARGET, "put", List.of(idLiteral, instantiationExpression)));
+            var id = instantiationElement.id();
+            emit(new SetFxmlObjectCall(id, instantiationExpression));
             var clazz = classResolver.resolve(instantiationElement.className());
             reflectionHelper.getSetter(clazz, "id").ifPresent(setter ->
-                emit(new MethodCall(new ExpressionTarget(instantiationExpression), setter.getName(), idLiteral))
+                emit(new MethodCall(new ExpressionTarget(instantiationExpression), setter.getName(), Literal.string(id)))
             );
         }
     }
@@ -166,7 +171,7 @@ public class FxmlTranslator {
                     translatePropertyAccess(bean, beanClass, beanProperty);
                 case InstanceElement instanceElement when defaultProperty.isPresent() ->
                     translatePropertyAccess(bean, beanClass, new PropertyElement(defaultProperty.get(), instanceElement));
-                default -> {}
+                default -> translateFxml(child);
             }
         }
     }
@@ -202,21 +207,26 @@ public class FxmlTranslator {
 
     private Expression translateValueExpression(ValueExpression valueExpression, Class<?> targetClass) {
         return switch (valueExpression) {
-            case ValueExpression.String value -> Literal.string(value.value());
-            case ValueExpression.Reference value -> throw new UnsupportedOperationException();
+            case ValueExpression.String(String value) -> Literal.string(value);
+            case ValueExpression.Reference(String source) -> new GetFxmlObjectCall(source);
             case ValueExpression.Binding value -> throw new UnsupportedOperationException();
             case ValueExpression.Location value -> throw new UnsupportedOperationException();
         };
     }
 
     public static void main(String[] args) throws Exception {
-        var javaCode = FxmlTranslator.translateFxml("""
+        var translation = FxmlTranslator.translateFxml("""
             <?import javafx.scene.control.*?>
             <?import javafx.scene.layout.*?>
             <Pane xmlns:fx="http://javafx.com/fxml">
+                <fx:define>
+                    <String fx:id="prompt" fx:value="Enter answer"/>
+                    <TextField fx:id="answerInput" promptText="$prompt"/>
+                </fx:define>
                <Label fx:id="label1" text="Hi!"/>
+               <fx:reference source="answerInput"/>
             </Pane>
             """, FxmlTranslator.class.getClassLoader());
-        System.out.println(JavaCode.statements2String(javaCode));
+        System.out.println(JavaCode.statements2String(translation.statements()));
     }
 }

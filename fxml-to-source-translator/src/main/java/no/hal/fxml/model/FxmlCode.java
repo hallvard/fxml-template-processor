@@ -28,7 +28,7 @@ public class FxmlCode {
 
     // <?import javafx.scene.*?>
     public record Import(QName qName, boolean wildcard) {
-    }    
+    }
 
     // <fx:root type="javafx.scene.layout.VBox" xmlns:fx="http://javafx.com/fxml">
     public record Root(QName typeName, List<FxmlElement> children) implements BeanElement {

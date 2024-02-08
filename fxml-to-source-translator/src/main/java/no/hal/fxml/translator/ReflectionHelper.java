@@ -46,16 +46,13 @@ public class ReflectionHelper {
     }
 
     public Optional<Method> getMethod(Class<?> clazz, String methodName, Predicate<Executable> test) {
-        var key = new ClassExecutable(clazz, methodName, test);
-        if (classExecutables.containsKey(key)) {
-            return Optional.of((Method) classExecutables.get(key));
-        }
-        return getMethod(key);
+        return getMethod(new ClassExecutable(clazz, methodName, test));
     }
 
     private Optional<Method> getMethod(ClassExecutable classMethod) {
         if (classExecutables.containsKey(classMethod)) {
-            return Optional.of((Method) classExecutables.get(classMethod));
+            Method m = (Method) classExecutables.get(classMethod);
+            return m != null ? Optional.of(m) : Optional.empty();
         }
         for (Method method : classMethod.clazz.getMethods()) {
             if (method.getName().equals(classMethod.methodName) && classMethod.test.test(method)) {

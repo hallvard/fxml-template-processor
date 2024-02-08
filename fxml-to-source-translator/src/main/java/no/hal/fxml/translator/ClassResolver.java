@@ -1,5 +1,6 @@
 package no.hal.fxml.translator;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,7 +16,9 @@ public class ClassResolver {
 
     public ClassResolver(ClassLoader classLoader, List<Import> imports) {
         this.classLoader = classLoader;
-        this.imports = imports;
+        this.imports = new ArrayList<>();
+        this.imports.add(new Import(new QName("java.lang", null), true));
+        this.imports.addAll(imports);
     }
     
     private Map<QName, Class<?>> classMap = new HashMap<>();

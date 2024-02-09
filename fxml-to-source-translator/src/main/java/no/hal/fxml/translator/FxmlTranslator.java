@@ -109,15 +109,46 @@ public class FxmlTranslator {
                 yield rootExpression;
             }
             case InstantiationElement instantiationElement -> {
-                var instanceExpression = translateInstantiation(instantiationElement.className(), instantiationElement.instantiation());
-                if (instanceExpression != null) {
-                    expressionFor(instantiationElement, instanceExpression);
-                    translateId(instantiationElement);
-                    translateBeanChildren(instantiationElement, instantiationElement.children());
-                } else {
-                    // try constructor with @NamedArg, e.g. Color(red, green, blue))
+                var clazz = classResolver.resolve(instantiationElement.className());
+                var instantiationExpression = translateInstantiation(clazz, instantiationElement.instantiation());
+                var beanChildrenToProcess = new ArrayList<>(instantiationElement.children());
+                if (instantiationExpression == null) {
+                    var constructor = reflectionHelper.getNamedArgsConstructor(clazz);
+                    if (constructor.isPresent()) {
+                        // try constructor with @NamedArg, e.g. Color(red, green, blue))
+                        // {red=@javafx.beans.NamedArg(defaultValue="", value="red"), green=@javafx.beans.NamedArg(defaultValue="", value="green"), blue=@javafx.beans.NamedArg(defaultValue="", value="blue"), opacity=@javafx.beans.NamedArg(defaultValue="1", value="opacity")}
+                        var namedArgs = reflectionHelper.getNamedConstructorArgs(constructor.get());
+                        var argNames = namedArgs.keySet();
+                        Map<String, Expression> argExpressions = new HashMap<>();
+                        for (var child : instantiationElement.children()) {
+                            if (child instanceof BeanProperty beanProperty && argNames.contains(beanProperty.propertyName())) {
+                                var namedArgInfo = namedArgs.get(beanProperty.propertyName());
+                                List<Expression> expressions = translatePropertyValues(beanProperty, namedArgInfo.type());
+                                if (expressions.size() != 1) {
+                                    throw new IllegalArgumentException("Property should only have one value: " + beanProperty);
+                                }
+                                argExpressions.put(beanProperty.propertyName(), expressions.getFirst());
+                                beanChildrenToProcess.remove(child);
+                            }
+                        }
+                        if (namedArgs.size() != argExpressions.size()) {
+                            var missingProperties = new ArrayList<>(argNames);
+                            missingProperties.removeAll(argExpressions.keySet());
+                            throw new IllegalArgumentException("Missing properties, need all in " + missingProperties);
+                        }
+                        instantiationExpression = new ConstructorCall(QName.valueOf(clazz.getName()), argNames.stream().map(argExpressions::get).toList());
+                    }
                     // how to support other JavaFXBuilderFactory logic???
                 }
+                if (instantiationExpression == null) {
+                    throw new IllegalArgumentException("Couldn't create instance for " + instantiationElement);
+                }
+                var instanceVariable = gensym(clazz.getSimpleName());
+                emit(new VariableDeclaration(clazz.getName(), instanceVariable, instantiationExpression));
+                var instanceExpression = new VariableExpression(instanceVariable);
+                expressionFor(instantiationElement, instanceExpression);
+                translateId(instantiationElement);
+                translateBeanChildren(instantiationElement, beanChildrenToProcess);
                 yield instanceExpression;
             }
             case Reference reference -> new GetFxmlObjectCall(reference.source());
@@ -138,28 +169,15 @@ public class FxmlTranslator {
         }
     }
 
-    private Expression translateInstantiation(QName className, Instantiation instantiation) {
-        var instanceVariable = gensym(className.className());
-        var clazz = classResolver.resolve(className);
+    private Expression translateInstantiation(Class<?> clazz, Instantiation instantiation) {
         QName resolvedClassName = QName.valueOf(clazz.getName());
-        Expression instantiationExpression = switch (instantiation) {
+        return switch (instantiation) {
             case Constructor _ when reflectionHelper.getNoArgsConstructor(clazz).isPresent() -> new ConstructorCall(resolvedClassName);
             case Constructor _ -> null;
             case Factory(String methodName) -> new MethodCall(new ClassTarget(resolvedClassName), methodName);
             case Value(String valueString) -> new MethodCall(new ClassTarget(resolvedClassName), "valueOf", Literal.string(valueString));
             case Constant(String constantName) -> new VariableExpression(QName.toString(resolvedClassName.packageName(), resolvedClassName.className(), constantName));
         };
-        if (instantiationExpression != null) {
-            emit(new VariableDeclaration(resolvedClassName, instanceVariable, instantiationExpression));
-            return new VariableExpression(instanceVariable);
-        } else {
-            var constructor = reflectionHelper.getNamedArgsConstructor(getClass());
-            if (constructor.isPresent()) {
-                var namedArgs = reflectionHelper.getNamedConstructorArgs(constructor.get());
-                // 
-            }
-        }
-        return null;
     }
 
     private void translateBeanChildren(BeanElement bean, Iterable<? extends FxmlElement> fxmlElements) {
@@ -167,9 +185,9 @@ public class FxmlTranslator {
         Optional<String> defaultProperty = reflectionHelper.getDefaultProperty(beanClass);
         for (var child : fxmlElements) {
             switch (child) {
-                case BeanProperty beanProperty ->
+                case BeanProperty beanProperty -> 
                     translatePropertyAccess(bean, beanClass, beanProperty);
-                case InstanceElement instanceElement when defaultProperty.isPresent() ->
+                case InstanceElement instanceElement ->
                     translatePropertyAccess(bean, beanClass, new PropertyElement(defaultProperty.get(), instanceElement));
                 default -> translateFxml(child);
             }
@@ -194,20 +212,27 @@ public class FxmlTranslator {
                     : null
                 )
             );
-        List<Expression> valueExpressions = switch (property) {
-            case PropertyElement propertyElement -> propertyElement.children().stream().map(this::translateFxml).toList();
-            case PropertyValue propertyValue -> List.of(translateValueExpression(propertyValue.value(), propertyAccess.valueClass));
-            case StaticProperty staticProperty -> throw new UnsupportedOperationException();
-        };
+        if (propertyAccess == null) {
+            throw new IllegalArgumentException("No property access for " + property.propertyName() + " of " + beanClass);
+        }
+        List<Expression> valueExpressions = translatePropertyValues(property, propertyAccess.valueClass);
         for (var valueExpression : valueExpressions) {
             List<Expression> methodArgs = propertyAccess.firstArgs != null ? List.of(propertyAccess.firstArgs, valueExpression) : List.of(valueExpression);
             emit(new MethodCall(propertyAccess.methodTarget, propertyAccess.methodName, methodArgs));
         }
     }
 
+    private List<Expression> translatePropertyValues(BeanProperty property, Class<?> valueClass) {
+        return switch (property) {
+            case PropertyElement propertyElement -> propertyElement.children().stream().map(this::translateFxml).toList();
+            case PropertyValue propertyValue -> List.of(translateValueExpression(propertyValue.value(), valueClass));
+            case StaticProperty staticProperty -> throw new UnsupportedOperationException();
+        };
+    }
+
     private Expression translateValueExpression(ValueExpression valueExpression, Class<?> targetClass) {
         return switch (valueExpression) {
-            case ValueExpression.String(String value) -> Literal.string(value);
+            case ValueExpression.String(String value) -> new Literal(value, targetClass);
             case ValueExpression.Reference(String source) -> new GetFxmlObjectCall(source);
             case ValueExpression.Binding value -> throw new UnsupportedOperationException();
             case ValueExpression.Location value -> throw new UnsupportedOperationException();
@@ -218,13 +243,17 @@ public class FxmlTranslator {
         var translation = FxmlTranslator.translateFxml("""
             <?import javafx.scene.control.*?>
             <?import javafx.scene.layout.*?>
+            <?import javafx.scene.paint.*?>
+            <?import javafx.scene.shape.*?>
             <Pane xmlns:fx="http://javafx.com/fxml">
                 <fx:define>
                     <String fx:id="prompt" fx:value="Enter answer"/>
                     <TextField fx:id="answerInput" promptText="$prompt"/>
+                    <Color fx:id="red" red="1.0" green="0.0" blue="0.0" opacity="1.0"/>
                 </fx:define>
                <Label fx:id="label1" text="Hi!"/>
                <fx:reference source="answerInput"/>
+               <Rectangle x="0.0" y="0.0" width="100.0" height="100.0" fill="$red"/>
             </Pane>
             """, FxmlTranslator.class.getClassLoader());
         System.out.println(JavaCode.statements2String(translation.statements()));

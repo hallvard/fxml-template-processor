@@ -78,7 +78,7 @@ public class JavaCode {
         }
         @Override
         public String toString() {
-            return clazz == String.class ? "\"%s\"".formatted(literal) : literal;
+            return clazz == String.class ? "\"%s\"".formatted(literal) : "(%s)%s".formatted(clazz.getName(), literal);
         }
     }
 

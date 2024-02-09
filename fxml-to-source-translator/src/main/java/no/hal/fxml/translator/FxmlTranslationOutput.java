@@ -59,13 +59,17 @@ public class FxmlTranslationOutput {
         var translation = FxmlTranslator.translateFxml("""
             <?import javafx.scene.control.*?>
             <?import javafx.scene.layout.*?>
+            <?import javafx.scene.paint.*?>
+            <?import javafx.scene.shape.*?>
             <Pane xmlns:fx="http://javafx.com/fxml">
                 <fx:define>
                     <String fx:id="prompt" fx:value="Enter answer"/>
                     <TextField fx:id="answerInput" promptText="$prompt"/>
+                    <Color fx:id="red" red="1.0" green="0.0" blue="0.0" opacity="1.0"/>
                 </fx:define>
                <Label fx:id="label1" text="Hi!"/>
                <fx:reference source="answerInput"/>
+               <Rectangle x="0.0" y="0.0" width="100.0" height="100.0" fill="$red"/>
             </Pane>
             """, FxmlTranslator.class.getClassLoader());
         System.out.println(toFxmlBuilderSource(translation, QName.valueOf("no.hal.fxml.translator.TestOutput")));

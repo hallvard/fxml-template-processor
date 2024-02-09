@@ -19,6 +19,8 @@ public class FxmlTemplateProcessor implements StringTemplate.Processor<Node, Run
     <?import javafx.scene.*?>
     <?import javafx.scene.control.*?>
     <?import javafx.scene.layout.*?>
+    <?import javafx.scene.paint.*?>
+    <?import javafx.scene.shape.*?>
 
     <Pane xmlns:fx="http://javafx.com/fxml">
     """;

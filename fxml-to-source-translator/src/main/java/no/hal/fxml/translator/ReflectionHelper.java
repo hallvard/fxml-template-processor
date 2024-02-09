@@ -1,5 +1,6 @@
 package no.hal.fxml.translator;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Method;
@@ -87,12 +88,17 @@ public class ReflectionHelper {
         return getConstructor(clazz, NAMED_ARGS_CONSTRUCTOR_TEST);
     }
 
-    public Map<String, NamedArg> getNamedConstructorArgs(Constructor<?> cons) {
-        Map<String, NamedArg> namedArgs = new LinkedHashMap<>();
-        for (var annotations : cons.getParameterAnnotations()) {
-            for (var annotation : annotations) {
+    public record NamedArgInfo(String name, Class<?> type, String defaultValue) {}
+
+    public Map<String, NamedArgInfo> getNamedConstructorArgs(Constructor<?> cons) {
+        // order is important
+        Map<String, NamedArgInfo> namedArgs = new LinkedHashMap<>();
+        Annotation[][] parameterAnnotations = cons.getParameterAnnotations();
+        Class<?>[] parameterTypes = cons.getParameterTypes();
+        for (int i = 0; i < parameterAnnotations.length; i++) {
+            for (var annotation : parameterAnnotations[i]) {
                 if (annotation instanceof NamedArg namedArg) {
-                    namedArgs.put(namedArg.value(), namedArg);
+                    namedArgs.put(namedArg.value(), new NamedArgInfo(namedArg.value(), parameterTypes[i], namedArg.defaultValue()));
                 }
             }
         }

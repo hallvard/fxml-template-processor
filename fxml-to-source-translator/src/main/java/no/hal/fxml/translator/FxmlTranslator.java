@@ -111,15 +111,22 @@ public class FxmlTranslator {
             case InstantiationElement instantiationElement -> {
                 var clazz = classResolver.resolve(instantiationElement.className());
                 var instantiationExpression = translateInstantiation(clazz, instantiationElement.instantiation());
-                var beanChildrenToProcess = new ArrayList<>(instantiationElement.children());
+                var remainingBeanChildren = new ArrayList<>(instantiationElement.children());
                 if (instantiationExpression == null) {
                     var constructor = reflectionHelper.getNamedArgsConstructor(clazz);
                     if (constructor.isPresent()) {
                         // try constructor with @NamedArg, e.g. Color(red, green, blue))
-                        // {red=@javafx.beans.NamedArg(defaultValue="", value="red"), green=@javafx.beans.NamedArg(defaultValue="", value="green"), blue=@javafx.beans.NamedArg(defaultValue="", value="blue"), opacity=@javafx.beans.NamedArg(defaultValue="1", value="opacity")}
                         var namedArgs = reflectionHelper.getNamedConstructorArgs(constructor.get());
                         var argNames = namedArgs.keySet();
                         Map<String, Expression> argExpressions = new HashMap<>();
+                        // prefill with default values, that may be overwritten
+                        for (var namedArg : namedArgs.values()) {
+                            if (! namedArg.defaultValue().isBlank()) {
+                                Expression defaultExpr = translateValueExpression(new ValueExpression.String(namedArg.defaultValue()), namedArg.type());
+                                argExpressions.put(namedArg.name(), defaultExpr);
+                            }
+                        }
+                        // translate properties corresponding to named arguments
                         for (var child : instantiationElement.children()) {
                             if (child instanceof BeanProperty beanProperty && argNames.contains(beanProperty.propertyName())) {
                                 var namedArgInfo = namedArgs.get(beanProperty.propertyName());
@@ -128,13 +135,13 @@ public class FxmlTranslator {
                                     throw new IllegalArgumentException("Property should only have one value: " + beanProperty);
                                 }
                                 argExpressions.put(beanProperty.propertyName(), expressions.getFirst());
-                                beanChildrenToProcess.remove(child);
+                                remainingBeanChildren.remove(child);
                             }
                         }
-                        if (namedArgs.size() != argExpressions.size()) {
+                        if (namedArgs.size() > argExpressions.size()) {
                             var missingProperties = new ArrayList<>(argNames);
                             missingProperties.removeAll(argExpressions.keySet());
-                            throw new IllegalArgumentException("Missing properties, need all in " + missingProperties);
+                            throw new IllegalArgumentException("Missing properties: " + missingProperties);
                         }
                         instantiationExpression = new ConstructorCall(QName.valueOf(clazz.getName()), argNames.stream().map(argExpressions::get).toList());
                     }
@@ -148,7 +155,7 @@ public class FxmlTranslator {
                 var instanceExpression = new VariableExpression(instanceVariable);
                 expressionFor(instantiationElement, instanceExpression);
                 translateId(instantiationElement);
-                translateBeanChildren(instantiationElement, beanChildrenToProcess);
+                translateBeanChildren(instantiationElement, remainingBeanChildren);
                 yield instanceExpression;
             }
             case Reference reference -> new GetFxmlObjectCall(reference.source());

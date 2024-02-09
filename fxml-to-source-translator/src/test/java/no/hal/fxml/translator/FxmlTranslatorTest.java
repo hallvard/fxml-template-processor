@@ -49,7 +49,7 @@ public class FxmlTranslatorTest {
                 <fx:define>
                     <String fx:id="prompt" fx:value="Enter answer"/>
                     <TextField fx:id="answerInput" promptText="$prompt"/>
-                    <Color fx:id="red" red="1.0" green="0.0" blue="0.0" opacity="1.0"/>
+                    <Color fx:id="red" red="1.0" green="0.0" blue="0.0"/>
                 </fx:define>
                 <Label fx:id="label1" text="Hi!"/>
                 <fx:reference source="answerInput"/>
@@ -77,7 +77,7 @@ public class FxmlTranslatorTest {
                             new Literal("1.0", Double.TYPE),
                             new Literal("0.0", Double.TYPE),
                             new Literal("0.0", Double.TYPE),
-                            new Literal("1.0", Double.TYPE)
+                            new Literal("1", Double.TYPE)
                         ))
                     ),
                     new SetFxmlObjectCall("red", "color"),

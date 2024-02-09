@@ -78,7 +78,13 @@ public class JavaCode {
         }
         @Override
         public String toString() {
-            return clazz == String.class ? "\"%s\"".formatted(literal) : "(%s)%s".formatted(clazz.getName(), literal);
+            if (clazz == String.class) {
+                return "\"%s\"".formatted(literal);
+            } else if (clazz.isEnum()) {
+                return "%s.%s".formatted(clazz.getName(), literal);
+            } else {
+                return "(%s)%s".formatted(clazz.getName(), literal);
+            }
         }
     }
 
@@ -219,6 +225,9 @@ public class JavaCode {
         public void format(QName className, StringBuilder builder) {
             builder.append(toString(className));
         }
+        public void format(Class<?> clazz, StringBuilder builder) {
+            format(QName.valueOf(clazz.getName()), builder);
+        }
 
         public void format(Statement statement, StringBuilder builder) {
             switch (statement) {
@@ -259,6 +268,10 @@ public class JavaCode {
                         builder.append("\"");
                         builder.append(literal);
                         builder.append("\"");
+                    } else if (clazz.isEnum()) {
+                        format(clazz, builder);
+                        builder.append(".");
+                        builder.append(literal);
                     } else {
                         builder.append(literal);
                     }

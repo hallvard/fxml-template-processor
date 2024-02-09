@@ -33,6 +33,7 @@ public class FxmlParserTest {
             <?import javafx.scene.control.*?>
             <?import javafx.scene.layout.Pane?>
             <?import javafx.collections.*?>
+            <?import javafx.scene.shape.*?>
         
             <Pane xmlns:fx="http://javafx.com/fxml">
                 <fx:define>
@@ -47,13 +48,16 @@ public class FxmlParserTest {
                         </FXCollections>
                     </items>
                 </ListView>
+                <fx:reference source="answerInput"/>
+                <Rectangle fill="$red"/>
             </Pane>
             """,
             new Document(
                 List.of(
                     new Import(new QName("javafx.scene.control", null), true),
                     new Import(new QName("javafx.scene.layout", "Pane"), false),
-                    new Import(new QName("javafx.collections", null), true)
+                    new Import(new QName("javafx.collections", null), true),
+                    new Import(new QName("javafx.scene.shape", null), true)
                 ),
                 new InstantiationElement(new QName("Pane"), new Constructor(), null,
                     List.of(
@@ -78,6 +82,12 @@ public class FxmlParserTest {
                                     )
                                 )
                             )
+                        ),
+                        new Reference("answerInput"),
+                        new InstantiationElement(new QName("Rectangle"), new Constructor(), null,
+                            List.of(
+                                new PropertyValue("fill", new ValueExpression.Reference("red"))
+                            )
                         )
                     )
                 )
@@ -87,6 +97,9 @@ public class FxmlParserTest {
 }
 
 /*
+
+Document[imports=[Import[qName=javafx.scene.control, wildcard=true], Import[qName=javafx.scene.layout.Pane, wildcard=false], Import[qName=javafx.collections, wildcard=true], Import[qName=javafx.scene.shape, wildcard=true]], instanceElement=InstantiationElement[className=Pane, instantiation=Constructor[], id=null, children=[Define[children=[InstantiationElement[className=String, instantiation=Value[valueString=Item 2], id=item2, children=[]]]], InstantiationElement[className=Label, instantiation=Constructor[], id=label1, children=[PropertyValue[propertyName=text, value=String[value=Hi!]]]], InstantiationElement[className=ListView, instantiation=Constructor[], id=null, children=[PropertyElement[propertyName=items, children=[InstantiationElement[className=FXCollections, instantiation=Factory[methodName=observableArrayList], id=null, children=[InstantiationElement[className=String, instantiation=Value[valueString=Item 1], id=null, children=[]], Reference[source=item2]]]]]]], Reference[source=answerInput], InstantiationElement[className=Rectangle, instantiation=Constructor[], id=null, children=[PropertyValue[propertyName=x, value=String[value=50.0]], PropertyValue[propertyName=y, value=String[value=20.0]], PropertyValue[propertyName=width, value=String[value=100]], PropertyValue[propertyName=height, value=String[value=300]], PropertyValue[propertyName=fill, value=Reference[source=red]]]]]]]
+Document[imports=[Import[qName=javafx.scene.control, wildcard=true], Import[qName=javafx.scene.layout.Pane, wildcard=false], Import[qName=javafx.collections, wildcard=true], Import[qName=javafx.scene.shape, wildcard=true]], instanceElement=InstantiationElement[className=Pane, instantiation=Constructor[], id=null, children=[Define[children=[InstantiationElement[className=String, instantiation=Value[valueString=Item 2], id=item2, children=[]]]], InstantiationElement[className=Label, instantiation=Constructor[], id=label1, children=[PropertyValue[propertyName=text, value=String[value=Hi!]]]], InstantiationElement[className=ListView, instantiation=Constructor[], id=null, children=[PropertyElement[propertyName=items, children=[InstantiationElement[className=FXCollections, instantiation=Factory[methodName=observableArrayList], id=null, children=[InstantiationElement[className=String, instantiation=Value[valueString=Item 1], id=null, children=[]], Reference[source=item2]]]]]]], Reference[source=answerInput], InstantiationElement[className=Rectangle, instantiation=Constructor[], id=null, children=[PropertyValue[propertyName=x, value=String[value=50.0]], PropertyValue[propertyName=width, value=String[value=100]], PropertyValue[propertyName=y, value=String[value=20.0]], PropertyValue[propertyName=fill, value=Reference[source=red]], PropertyValue[propertyName=height, value=String[value=300]]]]]]]
 Document[
     imports=[
         Import[qName=QName[packageName=javafx.scene.control, className=null], wildcard=true],

@@ -94,7 +94,7 @@ public class FxmlParser {
             if (nextEvent instanceof ProcessingInstruction pi && FXMLLoader.IMPORT_PROCESSING_INSTRUCTION.equals(pi.getTarget())) {
                 imports.add(parseImport(pi));
             } else if (nextEvent instanceof StartElement element) {
-                FxmlElement fxmlElement = parseElement(element);
+                FxmlElement fxmlElement = parseStartElement(element);
                 if (! (fxmlElement instanceof InstanceElement instanceElement)) {
                     throw new XMLStreamException("Illegal root element: " + fxmlElement);
                 }
@@ -124,7 +124,7 @@ public class FxmlParser {
 
     private final static Constructor constructorInstantiation = new Constructor();
 
-    private FxmlElement parseElement(StartElement element) throws XMLStreamException {
+    private FxmlElement parseStartElement(StartElement element) throws XMLStreamException {
         Attribute idAttr = element.getAttributeByName(ID_QNAME);
         String fxId = (idAttr != null ? idAttr.getValue() : null);
         javax.xml.namespace.QName name = element.getName();
@@ -163,8 +163,10 @@ public class FxmlParser {
         } else if (DEFINE_QNAME.equals(name)) {
             return new Define(parseChildElements(InstantiationElement.class));
         } else if (INCLUDE_QNAME.equals(name)) {
+            parseChildElements(null);
             return new Include(getAttributeValue(element, INCLUDE_SOURCE_QNAME));
         } else if (REFERENCE_QNAME.equals(name)) {
+            parseChildElements(null);
             return new Reference(getAttributeValue(element, REFERENCE_SOURCE_QNAME));
         }
         throw new XMLStreamException("Illegal/unknown element: " + element);
@@ -246,8 +248,8 @@ public class FxmlParser {
                     if (textContent != null) {
                         throw new XMLStreamException("Unexpected StartElement: " + childElement);
                     }
-                    FxmlElement child = parseElement(childElement);
-                    if (! allowsChild.isInstance(child)) {
+                    FxmlElement child = parseStartElement(childElement);
+                    if (allowsChild == null || (! allowsChild.isInstance(child))) {
                         throw new XMLStreamException("Unexpected element: " + child);
                     }
                     children.add((C) child);

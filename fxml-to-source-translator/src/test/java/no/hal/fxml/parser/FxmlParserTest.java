@@ -86,11 +86,12 @@ public class FxmlParserTest {
                         new Reference("answerInput"),
                         new InstantiationElement(new QName("Rectangle"), new Constructor(), null,
                             List.of(
-                                new PropertyValue("fill", new ValueExpression.Reference("red"))
+                                new PropertyValue("fill", new ValueExpression.IdReference("red"))
                             )
                         )
                     )
-                )
+                ),
+                null
             )
         );
     }

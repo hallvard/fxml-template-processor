@@ -8,7 +8,7 @@ public sealed interface ValueExpression {
     }
 
     // $label
-    public record Reference(java.lang.String source) implements ValueExpression {
+    public record IdReference(java.lang.String source) implements ValueExpression {
     }
 
     // ${label.text}
@@ -18,4 +18,8 @@ public sealed interface ValueExpression {
     // @myUrl.png
     public record Location(java.lang.String location) implements ValueExpression {
     }
+
+    // #method
+    public record MethodReference(java.lang.String methodName) implements ValueExpression {
+    }    
 }

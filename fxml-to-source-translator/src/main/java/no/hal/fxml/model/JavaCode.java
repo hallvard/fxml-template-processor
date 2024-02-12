@@ -31,12 +31,32 @@ public class JavaCode {
         }
     }
 
+    public sealed interface Member permits MethodDeclaration, VariableDeclaration {
+        public String getName();
+    }
+
+    public record MethodDeclaration(String methodName, QName returnType, List<VariableDeclaration> parameters, List<Statement> body)
+        implements Member {
+        @Override
+        public String toString() {
+            String returnString = returnType != null ? returnType.toString() : "void";
+            return (body != null
+                ? "%s %s(%s) {\n%s\n}".formatted(returnString, methodName, list2String(parameters), statements2String(body))
+                : "%s %s(%s)".formatted(returnString, methodName, list2String(parameters))
+            );
+        }
+        @Override
+        public String getName() {
+            return methodName;
+        }
+    }
+
     public sealed interface Statement
-        permits VariableDeclaration, Return, ExecutableCall {
+        permits VariableDeclaration, Return, ExecutableCall, FieldAssignment {
     }
 
     public record VariableDeclaration(QName className, String variableName, Expression expression)
-        implements Statement {
+        implements Statement, Member {
         public VariableDeclaration(String className, String variableName, Expression expression) {
             this(QName.valueOf(className), variableName, expression);
         }
@@ -45,7 +65,14 @@ public class JavaCode {
         }
         @Override
         public String toString() {
-            return "%s %s = %s".formatted(className != null ? className : "var", variableName, expression);
+            return (expression != null 
+                ? "%s %s = %s".formatted(className != null ? className : "var", variableName, expression)
+                :  "%s %s".formatted(className != null ? className : "var", variableName)
+            );
+        }
+        @Override
+        public String getName() {
+            return variableName;
         }
     }
 
@@ -60,7 +87,7 @@ public class JavaCode {
     }
 
     public sealed interface Expression
-        permits VariableExpression, Literal, ExecutableCall {
+        permits VariableExpression, Literal, ExecutableCall, LambdaExpression, FieldAssignment {
     }
 
     public record VariableExpression(String variableName)
@@ -88,11 +115,11 @@ public class JavaCode {
         }
     }
 
-    public sealed interface MethodTarget
+    public sealed interface ObjectTarget
         permits ClassTarget, ExpressionTarget {
     }
 
-    public record ClassTarget(QName className) implements MethodTarget {
+    public record ClassTarget(QName className) implements ObjectTarget {
         public ClassTarget(String className) {
             this(QName.valueOf(className));
         }
@@ -102,7 +129,7 @@ public class JavaCode {
         }
     }
 
-    public record ExpressionTarget(Expression expression) implements MethodTarget {
+    public record ExpressionTarget(Expression expression) implements ObjectTarget {
         public ExpressionTarget(String variableName) {
             this(new VariableExpression(variableName));
         }
@@ -124,13 +151,13 @@ public class JavaCode {
     public static String expression2String(Expression expression) {
         return expression.toString();
     } 
-    public static String expressionList2String(List<Expression> expressions) {
-        return expressions.stream().map(Object::toString).collect(Collectors.joining(", "));
+    public static <T> String list2String(List<T> items) {
+        return items.stream().map(Object::toString).collect(Collectors.joining(", "));
     }
 
-    public record MethodCall(MethodTarget target, String methodName, List<Expression> arguments)
+    public record MethodCall(ObjectTarget target, String methodName, List<Expression> arguments)
         implements ExecutableCall {
-        public MethodCall(MethodTarget target, String methodName, Expression singleArg) {
+        public MethodCall(ObjectTarget target, String methodName, Expression singleArg) {
             this(target, methodName, Collections.singletonList(singleArg));
         }
         public MethodCall(Expression expression, String methodName, Expression singleArg) {
@@ -139,7 +166,7 @@ public class JavaCode {
         public MethodCall(String variableName, String methodName, Expression singleArg) {
             this(new ExpressionTarget(variableName), methodName, singleArg);
         }
-        public MethodCall(MethodTarget target, String methodName) {
+        public MethodCall(ObjectTarget target, String methodName) {
             this(target, methodName, Collections.emptyList());
         }
         public MethodCall(Expression expression, String methodName) {
@@ -150,7 +177,18 @@ public class JavaCode {
         }
         @Override
         public String toString() {
-            return "%s%s(%s)".formatted(target, methodName, JavaCode.expressionList2String(arguments));
+            return "%s%s(%s)".formatted(target != null ? target : "", methodName, JavaCode.list2String(arguments));
+        }
+    }
+
+    public record LambdaExpression(List<String> paramList, Expression expression)
+        implements Expression {
+        public LambdaExpression(String param, Expression expression) {
+            this(List.of(param), expression);
+        }
+        @Override
+        public String toString() {
+            return "(%s) -> %s".formatted(JavaCode.list2String(paramList), expression);
         }
     }
 
@@ -160,7 +198,7 @@ public class JavaCode {
         }
         @Override
         public String toString() {
-            return "getFxmlObject(%s)".formatted(JavaCode.expressionList2String(arguments));
+            return "getFxmlObject(%s)".formatted(JavaCode.list2String(arguments));
         }
     }
     public record SetFxmlObjectCall(List<Expression> arguments) implements ExecutableCall {
@@ -172,7 +210,7 @@ public class JavaCode {
         }
         @Override
         public String toString() {
-            return "setFxmlObject(%s)".formatted(JavaCode.expressionList2String(arguments));
+            return "setFxmlObject(%s)".formatted(JavaCode.list2String(arguments));
         }
     }
 
@@ -186,7 +224,18 @@ public class JavaCode {
         }
         @Override
         public String toString() {
-            return "new %s(%s)".formatted(className, JavaCode.expressionList2String(arguments));
+            return "new %s(%s)".formatted(className, JavaCode.list2String(arguments));
+        }
+    }
+
+    public record FieldAssignment(ObjectTarget target, String fieldName, Expression valuExpression)
+        implements Expression, Statement {
+        public FieldAssignment(String variableName, String fieldName, Expression valuExpression) {
+            this(new ExpressionTarget(variableName), fieldName, valuExpression);
+        }
+        @Override
+        public String toString() {
+            return "%s%s = %s".formatted(target, fieldName, valuExpression);
         }
     }
 
@@ -245,6 +294,9 @@ public class JavaCode {
                 case ExecutableCall call -> {
                     format((Expression) call, builder);
                 }
+                case FieldAssignment fieldAssignment -> {
+                    format((Expression) fieldAssignment, builder);
+                }
             }
             builder.append(";\n");
         }
@@ -276,9 +328,11 @@ public class JavaCode {
                         builder.append(literal);
                     }
                 }
-                case MethodCall(MethodTarget target, String methodName, List<Expression> arguments) -> {
-                    format(target, builder);
-                    builder.append(".");
+                case MethodCall(ObjectTarget target, String methodName, List<Expression> arguments) -> {
+                    if (target != null) {
+                        format(target, builder);
+                        builder.append(".");
+                    }
                     builder.append(methodName);
                     formatArgumentList(arguments, builder);
                 }
@@ -295,10 +349,28 @@ public class JavaCode {
                     format(className, builder);
                     formatArgumentList(arguments, builder);
                 }
+                case LambdaExpression(List<String> paramList, Expression expr) -> {
+                    switch (paramList.size()) {
+                        case 0 -> builder.append("()");
+                        case 1 -> builder.append(paramList.getFirst());
+                        default -> builder.append(paramList.stream().collect(Collectors.joining(", ", "(", ")")));
+                    }
+                    builder.append(" -> ");
+                    format(expr, builder);
+                }
+                case FieldAssignment(ObjectTarget target, String fieldName, Expression valueExpression) -> {
+                    if (target != null) {
+                        format(target, builder);
+                        builder.append(".");
+                    }
+                    builder.append(fieldName);
+                    builder.append(" = ");
+                    format(valueExpression, builder);
+                }
             }
         }
 
-        public void format(MethodTarget methodTarget, StringBuilder builder) {
+        public void format(ObjectTarget methodTarget, StringBuilder builder) {
             switch (methodTarget) {
                 case ClassTarget(QName className) -> {
                     format(className, builder);

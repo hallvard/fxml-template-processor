@@ -2,10 +2,10 @@ package no.hal.fxml.translator;
 
 import java.util.Map;
 
+import javafx.fxml.FXML;
 import no.hal.fxml.model.JavaCode;
-import no.hal.fxml.model.QName;
 import no.hal.fxml.model.JavaCode.Imports;
-import no.hal.fxml.model.JavaCode.VariableExpression;
+import no.hal.fxml.model.QName;
 import no.hal.fxml.translator.FxmlTranslator.FxmlTranslation;
 
 public class FxmlTranslationOutput {
@@ -13,12 +13,8 @@ public class FxmlTranslationOutput {
     public static String toFxmlBuilderSource(FxmlTranslation translation, QName className) {
         Imports imports = new Imports(Map.<String, QName>of());
         JavaCode.Formatter formatter = new JavaCode.Formatter(imports);
-        QName nodeType = QName.valueOf("javafx.scene.Node");
-        if (translation.rootExpression() instanceof VariableExpression varExpr) {
-            nodeType = JavaCode.findVariableType(varExpr.variableName(), translation.statements()).orElse(nodeType);
-        }
-        String nodeTypeString = formatter.toString(nodeType);
-        String methodBody = formatter.format(translation.statements());
+        QName nodeType = translation.builder().returnType();
+        String nodeTypeString = formatter.toString(nodeType != null ? nodeType : QName.valueOf("javax.scene.Node"));
         String extraImports = formatter.format(imports);
     
         return """
@@ -38,9 +34,9 @@ public class FxmlTranslationOutput {
                     super(namespace);
                 }
                 
-                public %s build() {
-            %s
-                }
+                %s
+
+                %s
             }
             """
             .formatted(
@@ -50,12 +46,13 @@ public class FxmlTranslationOutput {
                 nodeTypeString, // extends AbstractFxBuilder<%s>
                 className.className(), // public %s()
                 className.className(), // public %s(...)
-                nodeTypeString, // public %s build()
-                methodBody.indent(8)
+                translation.builder(),
+                translation.initializer()
             );
     }
 
     public static void main(String[] args) throws Exception {
+
         var translation = FxmlTranslator.translateFxml("""
             <?import javafx.scene.control.*?>
             <?import javafx.scene.layout.*?>

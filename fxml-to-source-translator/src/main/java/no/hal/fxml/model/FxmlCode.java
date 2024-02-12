@@ -24,7 +24,7 @@ public class FxmlCode {
         public QName beanType();
     }
 
-    public record Document(List<Import> imports, InstanceElement instanceElement) {}
+    public record Document(List<Import> imports, InstanceElement instanceElement, QName controllerClassName) {}
 
     // <?import javafx.scene.*?>
     public record Import(QName qName, boolean wildcard) {

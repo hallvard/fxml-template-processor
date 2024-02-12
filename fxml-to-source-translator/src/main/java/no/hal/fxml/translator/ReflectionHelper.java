@@ -3,6 +3,7 @@ package no.hal.fxml.translator;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
+import java.lang.reflect.Member;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -22,6 +23,15 @@ public class ReflectionHelper {
             propertyName = Character.toUpperCase(propertyName.charAt(0)) + propertyName.substring(1);
         }
         return prefix + propertyName;
+    }
+    public String propertyName(String prefix, String methodName) {
+        if (methodName.startsWith(prefix)) {
+            return (Character.isUpperCase(methodName.charAt(prefix.length()))
+                ? Character.toLowerCase(methodName.charAt(prefix.length())) + methodName.substring(prefix.length() + 1)
+                : methodName.substring(prefix.length())
+            );
+        }
+        return null;
     }
 
     private record ClassExecutable(Class<?> clazz, String methodName, Predicate<Executable> test) {}
@@ -161,5 +171,41 @@ public class ReflectionHelper {
             return Optional.of(defaultProperty.value());
         }
         return Optional.empty();
+    }
+
+    //
+
+    public <T extends Annotation> Map<Member, T> findAnnotatedMembers(Class<?> clazz, Class<T> annotationClass) {
+        Map<Member, T> members = new LinkedHashMap<>();
+        for (var field : clazz.getDeclaredFields()) {
+            T annotation = field.getAnnotation(annotationClass);
+            if (annotation != null) {
+                members.put(field, annotation);
+            }
+        }
+        for (var method : clazz.getDeclaredMethods()) {
+            T annotation = method.getAnnotation(annotationClass);
+            if (annotation != null) {
+                members.put(method, annotation);
+            }
+        }
+        return members;
+    }
+
+    //
+
+    public Method getMethod(Class<?> clazz, String methodName, Class<?>... paramTypes) {
+        outer: for (var method : clazz.getDeclaredMethods()) {
+            if (method.getName().equals(methodName) && method.getParameterCount() == paramTypes.length) {
+                var methodParamTypes = method.getParameterTypes();
+                for (int i = 0; i < paramTypes.length; i++) {
+                    if (! paramTypes[i].isAssignableFrom(methodParamTypes[i])) {
+                        continue outer;
+                    }
+                }
+                return method;
+            }
+        }
+        return null;
     }
 }

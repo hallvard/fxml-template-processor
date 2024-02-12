@@ -98,7 +98,9 @@ public class FxmlParser {
                 if (! (fxmlElement instanceof InstanceElement instanceElement)) {
                     throw new XMLStreamException("Illegal root element: " + fxmlElement);
                 }
-                return new Document(imports, instanceElement);
+                Attribute controllerAttr = element.getAttributeByName(CONTROLLER_QNAME);
+                QName controllerClassName = (controllerAttr != null ? QName.valueOf(controllerAttr.getValue()) : null);
+                return new Document(imports, instanceElement, controllerClassName);
             }
         }
         throw new XMLStreamException("Illegal fxml document");
@@ -211,9 +213,11 @@ public class FxmlParser {
                 return new ValueExpression.Binding(value.substring(2, value.length() - 1));
             }
         } else if (value.startsWith(FXMLLoader.EXPRESSION_PREFIX)) {
-            return new ValueExpression.Reference(value.substring(1));
-        } else if (value.startsWith("@")) {
-            return new ValueExpression.Location(value.substring(1));
+            return new ValueExpression.IdReference(value.substring(FXMLLoader.EXPRESSION_PREFIX.length()));
+        } else if (value.startsWith(FXMLLoader.CONTROLLER_METHOD_PREFIX)) {
+            return new ValueExpression.MethodReference(value.substring(FXMLLoader.CONTROLLER_METHOD_PREFIX.length()));
+        } else if (value.startsWith(FXMLLoader.RELATIVE_PATH_PREFIX)) {
+            return new ValueExpression.Location(value.substring(FXMLLoader.RELATIVE_PATH_PREFIX.length()));
         } else {
             return new ValueExpression.String(value);
         }

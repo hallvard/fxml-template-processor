@@ -1,12 +1,18 @@
 package no.hal.fxml.translator;
 
 import java.io.InputStream;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import javafx.event.ActionEvent;
+import javafx.event.Event;
+import javafx.event.EventHandler;
+import javafx.fxml.FXML;
 import no.hal.fxml.model.FxmlCode.BeanElement;
 import no.hal.fxml.model.FxmlCode.BeanProperty;
 import no.hal.fxml.model.FxmlCode.Define;
@@ -25,15 +31,17 @@ import no.hal.fxml.model.Instantiation.Constant;
 import no.hal.fxml.model.Instantiation.Constructor;
 import no.hal.fxml.model.Instantiation.Factory;
 import no.hal.fxml.model.Instantiation.Value;
-import no.hal.fxml.model.JavaCode;
 import no.hal.fxml.model.JavaCode.ClassTarget;
 import no.hal.fxml.model.JavaCode.ConstructorCall;
 import no.hal.fxml.model.JavaCode.Expression;
 import no.hal.fxml.model.JavaCode.ExpressionTarget;
+import no.hal.fxml.model.JavaCode.FieldAssignment;
 import no.hal.fxml.model.JavaCode.GetFxmlObjectCall;
+import no.hal.fxml.model.JavaCode.LambdaExpression;
 import no.hal.fxml.model.JavaCode.Literal;
 import no.hal.fxml.model.JavaCode.MethodCall;
-import no.hal.fxml.model.JavaCode.MethodTarget;
+import no.hal.fxml.model.JavaCode.MethodDeclaration;
+import no.hal.fxml.model.JavaCode.ObjectTarget;
 import no.hal.fxml.model.JavaCode.Return;
 import no.hal.fxml.model.JavaCode.SetFxmlObjectCall;
 import no.hal.fxml.model.JavaCode.Statement;
@@ -53,11 +61,18 @@ public class FxmlTranslator {
         this.reflectionHelper = new ReflectionHelper();
     }
 
-    private List<Statement> statements = new ArrayList<>();
-    private Map<FxmlElement, Expression> expressions = new HashMap<>();
+    private QName rootType = null;
 
-    private void emit(Statement statement) {
-        statements.add(statement);
+    private List<Statement> builderStatements = new ArrayList<>();
+    private List<Statement> initializerStatements = new ArrayList<>();
+    private Map<FxmlElement, Expression> expressions = new HashMap<>();
+    private Map<String, List<Expression>> methodReferences = new HashMap<>();
+
+    private void emitBuilderStatement(Statement statement) {
+        builderStatements.add(statement);
+    }
+    private void emitInitializerStatement(Statement statement) {
+        initializerStatements.add(statement);
     }
 
     private Expression expressionFor(FxmlElement fxmlElement, Expression expression) {
@@ -79,14 +94,29 @@ public class FxmlTranslator {
         return varNum == 0 ? baseName : baseName + varNum;
     }
 
-    public record FxmlTranslation(List<Statement> statements, Expression rootExpression) {
+    public record FxmlTranslation(MethodDeclaration builder, MethodDeclaration initializer, List<MethodDeclaration> extraMethodds) {
     }
 
     public static FxmlTranslation translateFxml(Document fxmlDocument, ClassLoader classLoader) {
         FxmlTranslator translator = new FxmlTranslator(fxmlDocument, classLoader);
-        Expression rootExpression = translator.translateFxml(fxmlDocument.instanceElement());
-        translator.emit(new Return(rootExpression));
-        return new FxmlTranslation(translator.statements, rootExpression);
+        FxmlElement rootElement = fxmlDocument.instanceElement();
+        Expression rootExpression = translator.fxml2BuilderStatements(rootElement);
+        translator.emitBuilderStatement(new Return(rootExpression));
+        MethodDeclaration initializerMethod = null;
+        List<MethodDeclaration> extraMethods = null;
+        if (fxmlDocument.controllerClassName() != null) {
+            Class<?> controllerClass = translator.classResolver.resolve(fxmlDocument.controllerClassName());
+            translator.fxml2InitializerStatements(controllerClass);
+            initializerMethod = new MethodDeclaration("initialize", null, List.of(new VariableDeclaration(fxmlDocument.controllerClassName(), "controller", null)), translator.initializerStatements);
+            extraMethods = translator.methodReferences.entrySet().stream()
+                .map(entry -> translator.bridgeMethodDeclaration(controllerClass, entry.getKey(), entry.getValue()))
+                .toList();
+        }
+        return new FxmlTranslation(
+            new MethodDeclaration("build", translator.rootType, List.of(), translator.builderStatements),
+            initializerMethod,
+            extraMethods
+        );
     }
     public static FxmlTranslation translateFxml(String fxml, ClassLoader classLoader) throws Exception {
         return translateFxml(FxmlParser.parseFxml(fxml), classLoader);
@@ -95,25 +125,32 @@ public class FxmlTranslator {
         return translateFxml(FxmlParser.parseFxml(input), classLoader);
     }
 
-    private Expression translateFxml(FxmlElement fxmlElement) {
+    private Expression fxml2BuilderStatements(FxmlElement fxmlElement) {
         return switch (fxmlElement) {
             case Define define -> {
-                define.children().forEach(this::translateFxml);
+                define.children().forEach(this::fxml2BuilderStatements);
                 yield null;
             }
             case Root root -> {
+                if (this.rootType == null) {
+                    var rootClass = classResolver.resolve(root.typeName());
+                    this.rootType = QName.valueOf(rootClass.getName());
+                }
                 var rootVariable = gensym("root");
-                emit(new VariableDeclaration(root.typeName(), rootVariable, new VariableExpression("_fxmlLoader.getRoot()")));
+                emitBuilderStatement(new VariableDeclaration(root.typeName(), rootVariable, new VariableExpression("_fxmlLoader.getRoot()")));
                 var rootExpression = expressionFor(root, new VariableExpression(rootVariable));
                 translateBeanChildren(root, root.children());
                 yield rootExpression;
             }
             case InstantiationElement instantiationElement -> {
-                var clazz = classResolver.resolve(instantiationElement.className());
-                var instantiationExpression = translateInstantiation(clazz, instantiationElement.instantiation());
+                var instanceClass = classResolver.resolve(instantiationElement.className());
+                if (this.rootType == null) {
+                    this.rootType = QName.valueOf(instanceClass.getName());
+                }
+                var instantiationExpression = translateInstantiation(instanceClass, instantiationElement.instantiation());
                 var remainingBeanChildren = new ArrayList<>(instantiationElement.children());
                 if (instantiationExpression == null) {
-                    var constructor = reflectionHelper.getNamedArgsConstructor(clazz);
+                    var constructor = reflectionHelper.getNamedArgsConstructor(instanceClass);
                     if (constructor.isPresent()) {
                         // try constructor with @NamedArg, e.g. Color(red, green, blue))
                         var namedArgs = reflectionHelper.getNamedConstructorArgs(constructor.get());
@@ -143,15 +180,15 @@ public class FxmlTranslator {
                             missingProperties.removeAll(argExpressions.keySet());
                             throw new IllegalArgumentException("Missing properties: " + missingProperties);
                         }
-                        instantiationExpression = new ConstructorCall(QName.valueOf(clazz.getName()), argNames.stream().map(argExpressions::get).toList());
+                        instantiationExpression = new ConstructorCall(QName.valueOf(instanceClass.getName()), argNames.stream().map(argExpressions::get).toList());
                     }
                     // how to support other JavaFXBuilderFactory logic???
                 }
                 if (instantiationExpression == null) {
                     throw new IllegalArgumentException("Couldn't create instance for " + instantiationElement);
                 }
-                var instanceVariable = gensym(clazz.getSimpleName());
-                emit(new VariableDeclaration(clazz.getName(), instanceVariable, instantiationExpression));
+                var instanceVariable = gensym(instanceClass.getSimpleName());
+                emitBuilderStatement(new VariableDeclaration(instanceClass.getName(), instanceVariable, instantiationExpression));
                 var instanceExpression = new VariableExpression(instanceVariable);
                 expressionFor(instantiationElement, instanceExpression);
                 translateId(instantiationElement);
@@ -164,14 +201,17 @@ public class FxmlTranslator {
         };
     }
 
+    private Map<String, Expression> idMap = new HashMap<>();
+
     private void translateId(InstantiationElement instantiationElement) {
         if (instantiationElement.id() != null) {
             var instantiationExpression = expressionFor(instantiationElement);
             var id = instantiationElement.id();
-            emit(new SetFxmlObjectCall(id, instantiationExpression));
+            idMap.put(id, instantiationExpression);
+            emitBuilderStatement(new SetFxmlObjectCall(id, instantiationExpression));
             var clazz = classResolver.resolve(instantiationElement.className());
             reflectionHelper.getSetter(clazz, "id").ifPresent(setter ->
-                emit(new MethodCall(new ExpressionTarget(instantiationExpression), setter.getName(), Literal.string(id)))
+                emitBuilderStatement(new MethodCall(new ExpressionTarget(instantiationExpression), setter.getName(), Literal.string(id)))
             );
         }
     }
@@ -196,19 +236,19 @@ public class FxmlTranslator {
                     translatePropertyAccess(bean, beanClass, beanProperty);
                 case InstanceElement instanceElement ->
                     translatePropertyAccess(bean, beanClass, new PropertyElement(defaultProperty.get(), instanceElement));
-                default -> translateFxml(child);
+                default -> fxml2BuilderStatements(child);
             }
         }
     }
 
-    private record PropertyAccess(MethodTarget methodTarget, String methodName, Class<?> valueClass, Expression firstArgs) {
-        PropertyAccess(MethodTarget methodTarget, String methodName, Class<?> valueClass) {
+    private record PropertyAccess(ObjectTarget methodTarget, String methodName, Class<?> valueClass, Expression firstArgs) {
+        PropertyAccess(ObjectTarget methodTarget, String methodName, Class<?> valueClass) {
             this(methodTarget, methodName, valueClass, null);
         }
     }
 
     private void translatePropertyAccess(BeanElement bean, Class<?> beanClass, BeanProperty property) {
-        MethodTarget beanTarget = new ExpressionTarget(expressionFor(bean));
+        ObjectTarget beanTarget = new ExpressionTarget(expressionFor(bean));
         PropertyAccess propertyAccess = reflectionHelper.getSetter(beanClass, property.propertyName())
             .map(setter -> new PropertyAccess(beanTarget, setter.getName(), setter.getParameterTypes()[0]))
             .orElseGet(() -> reflectionHelper.getGetter(beanClass, property.propertyName())
@@ -225,25 +265,77 @@ public class FxmlTranslator {
         List<Expression> valueExpressions = translatePropertyValues(property, propertyAccess.valueClass);
         for (var valueExpression : valueExpressions) {
             List<Expression> methodArgs = propertyAccess.firstArgs != null ? List.of(propertyAccess.firstArgs, valueExpression) : List.of(valueExpression);
-            emit(new MethodCall(propertyAccess.methodTarget, propertyAccess.methodName, methodArgs));
+            emitBuilderStatement(new MethodCall(propertyAccess.methodTarget, propertyAccess.methodName, methodArgs));
         }
     }
 
     private List<Expression> translatePropertyValues(BeanProperty property, Class<?> valueClass) {
         return switch (property) {
-            case PropertyElement propertyElement -> propertyElement.children().stream().map(this::translateFxml).toList();
+            case PropertyElement propertyElement -> propertyElement.children().stream().map(this::fxml2BuilderStatements).toList();
             case PropertyValue propertyValue -> List.of(translateValueExpression(propertyValue.value(), valueClass));
             case StaticProperty staticProperty -> throw new UnsupportedOperationException();
         };
     }
 
+    private String bridgeMethodFormat = "hash_%s";
+
     private Expression translateValueExpression(ValueExpression valueExpression, Class<?> targetClass) {
         return switch (valueExpression) {
             case ValueExpression.String(String value) -> new Literal(value, targetClass);
-            case ValueExpression.Reference(String source) -> new GetFxmlObjectCall(source);
+            case ValueExpression.IdReference(String source) -> new GetFxmlObjectCall(source);
             case ValueExpression.Binding value -> throw new UnsupportedOperationException();
             case ValueExpression.Location value -> throw new UnsupportedOperationException();
+            case ValueExpression.MethodReference(String methodName) -> {
+                List<Expression> argList = new ArrayList<>();
+                // argList will be updated, according to argument list of controller method
+                methodReferences.put(methodName, argList);
+                yield new LambdaExpression("event", new MethodCall((ObjectTarget) null, bridgeMethodFormat.formatted(methodName), argList));
+            }
         };
+    }
+
+    //
+
+    private void fxml2InitializerStatements(Class<?> controllerClass) {
+        var fxmlAnnotatedMembers = reflectionHelper.findAnnotatedMembers(controllerClass, FXML.class);
+        for (var member : fxmlAnnotatedMembers.keySet()) {
+            switch (member) {
+                case Field field -> {
+                    var fieldAssignment = new FieldAssignment("controller", member.getName(), new GetFxmlObjectCall(member.getName()));
+                    emitInitializerStatement(fieldAssignment);
+                }
+                case Method method -> {
+                    String propertyName = reflectionHelper.propertyName("set", method.getName());
+                    if (idMap.containsKey(propertyName)) {
+                        var methodCall = new MethodCall("controller", member.getName(), new GetFxmlObjectCall(propertyName));
+                        emitInitializerStatement(methodCall);
+                    }
+                }
+                default -> {}
+            }
+        }
+        fxmlAnnotatedMembers.keySet().stream()
+            .filter(member -> member instanceof Method && "initialize".equals(member.getName()))
+            .forEach(method -> emitInitializerStatement(new MethodCall("controller", method.getName())));
+    }
+
+    private MethodDeclaration bridgeMethodDeclaration(Class<?> controllerClass, String methodName, List<Expression> argList) {
+        Method method = reflectionHelper.getMethod(controllerClass, methodName, Event.class);
+        if (method == null) {
+            method = reflectionHelper.getMethod(controllerClass, methodName);
+        }
+        if (method == null) {
+            throw new IllegalStateException("No method in " + controllerClass + " for method reference #" + methodName);
+        }
+        List<VariableDeclaration> paramList = new ArrayList<>();
+        if (method.getParameterCount() == 1) {
+            paramList.add(new VariableDeclaration(QName.valueOf(method.getParameterTypes()[0].getName()), "event", null));
+            argList.add(new VariableExpression("event"));
+        }
+        MethodDeclaration methodDeclaration = new MethodDeclaration(bridgeMethodFormat.formatted(methodName), null, paramList, List.of(
+            new MethodCall(new ExpressionTarget("controller"), methodName, argList)
+        ));
+        return methodDeclaration;
     }
 
     public static void main(String[] args) throws Exception {
@@ -263,6 +355,7 @@ public class FxmlTranslator {
                <Rectangle x="0.0" y="0.0" width="100.0" height="100.0" fill="$red"/>
             </Pane>
             """, FxmlTranslator.class.getClassLoader());
-        System.out.println(JavaCode.statements2String(translation.statements()));
+        System.out.println(translation.builder);
+        System.out.println(translation.initializer);
     }
 }

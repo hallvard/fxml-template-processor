@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 public class JavaCode {
@@ -35,14 +36,14 @@ public class JavaCode {
         public String getName();
     }
 
-    public record MethodDeclaration(String methodName, QName returnType, List<VariableDeclaration> parameters, List<Statement> body)
+    public record MethodDeclaration(String modifiers, String methodName, QName returnType, List<VariableDeclaration> parameters, List<Statement> body)
         implements Member {
         @Override
         public String toString() {
             String returnString = returnType != null ? returnType.toString() : "void";
             return (body != null
-                ? "%s %s(%s) {\n%s\n}".formatted(returnString, methodName, list2String(parameters), statements2String(body))
-                : "%s %s(%s)".formatted(returnString, methodName, list2String(parameters))
+                ? "%s %s %s(%s) {\n%s\n}".formatted(modifiers, returnString, methodName, list2String(parameters), statements2String(body))
+                : "%s %s %s(%s)".formatted(modifiers, returnString, methodName, list2String(parameters))
             );
         }
         @Override
@@ -241,26 +242,86 @@ public class JavaCode {
 
     //
 
-    public record Formatter(Imports imports) {
+    public static class Formatter {
 
-        public <T> String formatWith(T t, BiConsumer<T, StringBuilder> formatter) {
-            StringBuilder builder = new StringBuilder();
-            formatter.accept(t, builder);
+        private Imports imports;
+
+        public Formatter(Imports imports) {
+            this.imports = imports;
+        }
+
+        private StringBuilder builder = new StringBuilder();
+        private int indentLevel = 0;
+        private String indentString = "   ";
+
+        public static <T> String format(Imports imports, T t, BiConsumer<Formatter, T> format) {
+            Formatter formatter = new Formatter(imports);
+            format.accept(formatter, t);
+            return formatter.builder.toString();
+        }
+
+        public <T> String format(T t, BiConsumer<Formatter, T> format) {
+            return format(this.imports, t, format);
+        }
+
+        //
+
+        @Override
+        public String toString() {
             return builder.toString();
         }
 
-        public String format(List<Statement> statements) {
-            return formatWith(statements, this::format);
-        }
-        public String format(Statement statement) {
-            return formatWith(statement, this::format);
-        }
-        public String format(Expression expression) {
-            return formatWith(expression, this::format);
+        public boolean append(String s) {
+            if (s != null) {
+                builder.append(s);
+                return s.length() > 0;
+            }
+            return false;
         }
 
-        public void format(List<Statement> statements, StringBuilder builder) {
-            statements.forEach(statement -> format(statement, builder));
+        public void indent() {
+            for (int i = 0; i < indentLevel; i++) {
+                append(indentString);
+            }
+        }
+        public void newlines(int i) {
+            while (i-- > 0) {
+                append("\n");
+            }
+        }
+        public void newline() {
+            newlines(1);
+        }
+
+        public <T> void withIndentation(int d, T t, BiConsumer<Formatter, T> formatter) {
+            indentLevel += d;
+            formatter.accept(this, t);
+            indentLevel -= d;
+        }
+        public <T> void withIndentation(T t, BiConsumer<Formatter, T> formatter) {
+            withIndentation(1, t, formatter);
+        }
+
+        public void format(MethodDeclaration method) {
+            indent();
+            if (append(method.modifiers())) {
+                append(" ");
+            }
+            if (method.returnType() != null) {
+                format(method.returnType());
+            } else {
+                append("void");
+            }
+            append(" ");
+            append(method.methodName());
+            formatList("(", method.parameters(), ") {\n", this::format);
+            withIndentation(method.body(), Formatter::format);
+            indent();
+            append("}\n");
+        }
+
+        public void format(List<Statement> statements) {
+            statements.forEach(this::format);
         }
 
         public String toString(QName className) {
@@ -271,125 +332,127 @@ public class JavaCode {
             }
         }
 
-        public void format(QName className, StringBuilder builder) {
-            builder.append(toString(className));
+        public void format(QName className) {
+            append(toString(className));
         }
-        public void format(Class<?> clazz, StringBuilder builder) {
-            format(QName.valueOf(clazz.getName()), builder);
+        public void format(Class<?> clazz) {
+            format(QName.valueOf(clazz.getName()));
         }
 
-        public void format(Statement statement, StringBuilder builder) {
+        public void format(VariableDeclaration varDecl) {
+            format(varDecl.className());
+            append(" ");
+            append(varDecl.variableName());
+            if (varDecl.expression() != null) {
+                append(" = ");
+                format(varDecl.expression());
+            }
+        }
+
+        public void format(Statement statement) {
+            indent();
             switch (statement) {
-                case VariableDeclaration varDecl -> {
-                    format(varDecl.className(), builder);
-                    builder.append(" ");
-                    builder.append(varDecl.variableName());
-                    builder.append(" = ");
-                    format(varDecl.expression(), builder);
-                }
+                case VariableDeclaration varDecl -> format(varDecl);
                 case Return ret -> {
-                    builder.append("return ");
-                    format(ret.expression(), builder);
+                    append("return ");
+                    format(ret.expression());
                 }
-                case ExecutableCall call -> {
-                    format((Expression) call, builder);
-                }
-                case FieldAssignment fieldAssignment -> {
-                    format((Expression) fieldAssignment, builder);
-                }
+                case ExecutableCall call -> format((Expression) call);
+                case FieldAssignment fieldAssignment -> format((Expression) fieldAssignment);
             }
-            builder.append(";\n");
+            append(";\n");
         }
 
-        public void formatArgumentList(List<Expression> arguments, StringBuilder builder) {
-            builder.append("(");
-            for (int i = 0; i < arguments.size(); i++) {
+        public <T> void formatList(String prefix, List<T> items, String suffix, Consumer<T> formatter) {
+            append(prefix);
+            for (int i = 0; i < items.size(); i++) {
                 if (i > 0) {
-                    builder.append(", ");
+                    append(", ");
                 }
-                format(arguments.get(i), builder);
+                formatter.accept(items.get(i));
             }
-            builder.append(")");
+            append(suffix);
         }
 
-        public void format(Expression expression, StringBuilder builder) {
+        public void formatArgumentList(List<Expression> arguments) {
+            formatList("(", arguments, ")", this::format);
+        }
+
+        public void format(Expression expression) {
             switch (expression) {
-                case VariableExpression(String variableName) -> builder.append(variableName);
+                case VariableExpression(String variableName) -> append(variableName);
                 case Literal(String literal, Class<?> clazz) -> {
                     if (String.class.equals(clazz)) {
-                        builder.append("\"");
-                        builder.append(literal);
-                        builder.append("\"");
+                        append("\"");
+                        append(literal);
+                        append("\"");
                     } else if (clazz.isEnum()) {
-                        format(clazz, builder);
-                        builder.append(".");
-                        builder.append(literal);
+                        format(clazz);
+                        append(".");
+                        append(literal);
                     } else {
-                        builder.append(literal);
+                        append(literal);
                     }
                 }
                 case MethodCall(ObjectTarget target, String methodName, List<Expression> arguments) -> {
                     if (target != null) {
-                        format(target, builder);
-                        builder.append(".");
+                        format(target);
+                        append(".");
                     }
-                    builder.append(methodName);
-                    formatArgumentList(arguments, builder);
+                    append(methodName);
+                    formatArgumentList(arguments);
                 }
                 case GetFxmlObjectCall(List<Expression> arguments) -> {
-                    builder.append("getFxmlObject");
-                    formatArgumentList(arguments, builder);
+                    append("getFxmlObject");
+                    formatArgumentList(arguments);
                 }
                 case SetFxmlObjectCall(List<Expression> arguments) -> {
-                    builder.append("setFxmlObject");
-                    formatArgumentList(arguments, builder);
+                    append("setFxmlObject");
+                    formatArgumentList(arguments);
                 }
                 case ConstructorCall(QName className, List<Expression> arguments) -> {
-                    builder.append("new ");
-                    format(className, builder);
-                    formatArgumentList(arguments, builder);
+                    append("new ");
+                    format(className);
+                    formatArgumentList(arguments);
                 }
                 case LambdaExpression(List<String> paramList, Expression expr) -> {
                     switch (paramList.size()) {
-                        case 0 -> builder.append("()");
-                        case 1 -> builder.append(paramList.getFirst());
-                        default -> builder.append(paramList.stream().collect(Collectors.joining(", ", "(", ")")));
+                        case 0 -> append("()");
+                        case 1 -> append(paramList.getFirst());
+                        default -> append(paramList.stream().collect(Collectors.joining(", ", "(", ")")));
                     }
-                    builder.append(" -> ");
-                    format(expr, builder);
+                    append(" -> ");
+                    format(expr);
                 }
                 case FieldAssignment(ObjectTarget target, String fieldName, Expression valueExpression) -> {
                     if (target != null) {
-                        format(target, builder);
-                        builder.append(".");
+                        format(target);
+                        append(".");
                     }
-                    builder.append(fieldName);
-                    builder.append(" = ");
-                    format(valueExpression, builder);
+                    append(fieldName);
+                    append(" = ");
+                    format(valueExpression);
                 }
             }
         }
 
-        public void format(ObjectTarget methodTarget, StringBuilder builder) {
+        public void format(ObjectTarget methodTarget) {
             switch (methodTarget) {
                 case ClassTarget(QName className) -> {
-                    format(className, builder);
+                    format(className);
                 }
                 case ExpressionTarget(Expression expr) -> {
-                    format(expr, builder);
+                    format(expr);
                 }
             }
         }
 
-        public String format(Imports imports) {
-            return formatWith(imports, this::format);
-        }
-
-        public void format(Imports imports, StringBuilder builder) {
+        public void format(Imports imports) {
             imports.imports.values().forEach(className -> {
-                builder.append("import ");
-                builder.append(className);
-                builder.append(";\n");
+                indent();
+                append("import ");
+                append(className.toString());
+                append(";\n");
             });
         }
     }

@@ -9,7 +9,7 @@ import java.lang.String;
 import javafx.scene.layout.Pane;
 
 
-public class TestOutput extends AbstractFxBuilder<Pane> {
+public class TestOutput extends AbstractFxBuilder<Pane, Object> {
 
     public TestOutput() {
         super();

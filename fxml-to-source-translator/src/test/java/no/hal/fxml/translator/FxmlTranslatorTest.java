@@ -10,6 +10,7 @@ import javafx.fxml.FXML;
 import no.hal.fxml.model.FxmlCode.Document;
 import no.hal.fxml.model.JavaCode.ClassTarget;
 import no.hal.fxml.model.JavaCode.ConstructorCall;
+import no.hal.fxml.model.JavaCode.ExpressionTarget;
 import no.hal.fxml.model.JavaCode.FieldAssignment;
 import no.hal.fxml.model.JavaCode.GetFxmlObjectCall;
 import no.hal.fxml.model.JavaCode.LambdaExpression;
@@ -42,11 +43,9 @@ public class FxmlTranslatorTest {
         }
         testFxmlTranslator(actual.builder(), expectedMethods.get(0));
         testFxmlTranslator(actual.initializer(), expectedMethods.get(1));
-        int methodNum = 0;
-        for (var method : actual.extraMethodds()) {
-            testFxmlTranslator(method, expectedMethods.get(methodNum + 2));
-            methodNum++;
-        }
+        System.out.println(
+            FxmlTranslationOutput.toFxmlBuilderSource(actual, QName.valueOf("no.hal.fxml.translator.TestOutput"))
+        );
     }
 
     private void testFxmlTranslator(String fxmlSource, MethodDeclaration... expectedMethods) throws Exception {
@@ -70,25 +69,27 @@ public class FxmlTranslatorTest {
         }
     }
 
+    private static String FXML_SAMPLE = """
+        <?import javafx.scene.control.*?>
+        <?import javafx.scene.layout.*?>
+        <?import javafx.scene.paint.*?>
+        <?import javafx.scene.shape.*?>
+        <Pane xmlns:fx="http://javafx.com/fxml" fx:controller="no.hal.fxml.translator.FxmlTranslatorTest$Controller">
+            <fx:define>
+                <String fx:id="prompt" fx:value="Enter answer"/>
+                <TextField fx:id="answerInput" promptText="$prompt" onAction="#onAnswerInput"/>
+                <Color fx:id="red" red="1.0" green="0.0" blue="0.0"/>
+            </fx:define>
+            <Label fx:id="label1" text="Hi!"/>
+            <fx:reference source="answerInput"/>
+            <Rectangle fill="$red"/>
+        </Pane>
+        """;
+
     @Test
     public void testFxmlTranslator() throws Exception {
-        testFxmlTranslator("""
-            <?import javafx.scene.control.*?>
-            <?import javafx.scene.layout.*?>
-            <?import javafx.scene.paint.*?>
-            <?import javafx.scene.shape.*?>
-            <Pane xmlns:fx="http://javafx.com/fxml" fx:controller="no.hal.fxml.translator.FxmlTranslatorTest$Controller">
-                <fx:define>
-                    <String fx:id="prompt" fx:value="Enter answer"/>
-                    <TextField fx:id="answerInput" promptText="$prompt" onAction="#onAnswerInput"/>
-                    <Color fx:id="red" red="1.0" green="0.0" blue="0.0"/>
-                </fx:define>
-                <Label fx:id="label1" text="Hi!"/>
-                <fx:reference source="answerInput"/>
-                <Rectangle fill="$red"/>
-            </Pane>
-            """,
-            new MethodDeclaration("build", QName.valueOf("javafx.scene.layout.Pane"), List.of(),
+        testFxmlTranslator(FXML_SAMPLE,
+            new MethodDeclaration("private", "build", QName.valueOf("javafx.scene.layout.Pane"), List.of(),
                 List.<Statement>of(
                     // Pane pane = new Pane()
                     VariableDeclaration.instantiation("javafx.scene.layout.Pane", "pane"),
@@ -104,7 +105,7 @@ public class FxmlTranslatorTest {
                             new MethodCall("textField", "setId", Literal.string("answerInput")),
                             // textField.setOnAction((event) -> hash_onAnswerInput(event))
                             new MethodCall("textField", "setOnAction",
-                                new LambdaExpression("event", new MethodCall((ObjectTarget) null, "hash_onAnswerInput", new VariableExpression("event")))
+                                new LambdaExpression("event", new MethodCall(new ExpressionTarget("this.controller"), "onAnswerInput", new VariableExpression("event")))
                             ),
                             // textField.setText(getFxmlObject("prompt"))
                             new MethodCall("textField", "setPromptText", new GetFxmlObjectCall("prompt")),
@@ -137,20 +138,12 @@ public class FxmlTranslatorTest {
                         new Return(new VariableExpression("pane"))
                 )
             ),
-            new MethodDeclaration("initialize", null,
-                List.of(new VariableDeclaration(QName.valueOf("no.hal.fxml.translator.FxmlTranslatorTest$Controller"), "controller", null)),
+            new MethodDeclaration("private", "initializeController", null, List.of(),
                 List.<Statement>of(
                     // controller.red = getFxmlObject("red")
-                    new FieldAssignment("controller", "red", new GetFxmlObjectCall("red")),
+                    new FieldAssignment("this.controller", "red", new GetFxmlObjectCall("red")),
                     // controller.setLabel1(getFxmlObject("label1"))
-                    new MethodCall("controller", "setLabel1", new GetFxmlObjectCall("label1"))
-                )
-            ),
-            new MethodDeclaration("hash_onAnswerInput", null,
-                List.of(new VariableDeclaration(QName.valueOf("javafx.event.ActionEvent"), "event", null)),
-                List.<Statement>of(
-                    // controller.onAnswerInput(event)
-                    new MethodCall("controller", "onAnswerInput", new VariableExpression("event"))
+                    new MethodCall("this.controller", "setLabel1", new GetFxmlObjectCall("label1"))
                 )
             )
        );

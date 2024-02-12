@@ -2,8 +2,8 @@ package no.hal.fxml.translator;
 
 import java.util.Map;
 
-import javafx.fxml.FXML;
 import no.hal.fxml.model.JavaCode;
+import no.hal.fxml.model.JavaCode.Formatter;
 import no.hal.fxml.model.JavaCode.Imports;
 import no.hal.fxml.model.QName;
 import no.hal.fxml.translator.FxmlTranslator.FxmlTranslation;
@@ -12,43 +12,47 @@ public class FxmlTranslationOutput {
 
     public static String toFxmlBuilderSource(FxmlTranslation translation, QName className) {
         Imports imports = new Imports(Map.<String, QName>of());
-        JavaCode.Formatter formatter = new JavaCode.Formatter(imports);
-        QName nodeType = translation.builder().returnType();
-        String nodeTypeString = formatter.toString(nodeType != null ? nodeType : QName.valueOf("javax.scene.Node"));
-        String extraImports = formatter.format(imports);
-    
-        return """
+        JavaCode.Formatter formatter = new Formatter(imports);
+        formatter.append("""
             package %s;
 
             import java.util.Map;
             import no.hal.fxml.builder.AbstractFxBuilder;
 
-            %s
+            """.formatted(className.packageName())
+        );
 
-            public class %s extends AbstractFxBuilder<%s> {
+        String classDecl = formatter.format(translation, (f, t) -> {
+            QName nodeType = t.builder().returnType();
+            String controllerTypeString = f.toString(QName.valueOf(translation.controllerClass().getName()));
+            String nodeTypeString = f.toString(nodeType != null ? nodeType : QName.valueOf("javax.scene.Node"));
+        
+            f.append("""
 
-                public %s() {
-                    super();
-                }
-                public %s(Map<String, Object> namespace) {
-                    super(namespace);
-                }
-                
-                %s
+                public class %s extends AbstractFxBuilder<%s, %s> {
+    
+                   public %s() {
+                      super();
+                   }
 
-                %s
-            }
-            """
-            .formatted(
-                className.packageName(), // package %s
-                extraImports,
-                className.className(), // public class %s
-                nodeTypeString, // extends AbstractFxBuilder<%s>
-                className.className(), // public %s()
-                className.className(), // public %s(...)
-                translation.builder(),
-                translation.initializer()
+                   public %s(Map<String, Object> namespace) {
+                      super(namespace);
+                   }
+
+                """.formatted(className.className(), nodeTypeString, controllerTypeString, className.className(), className.className())
             );
+            f.withIndentation(t.builder(), Formatter::format);
+            if (t.initializer() != null) {
+                f.newline();
+                f.withIndentation(t.initializer(), Formatter::format);
+            }
+            f.append("}");
+        });
+        
+        formatter.format(imports);
+        formatter.append(classDecl);
+
+        return formatter.toString();
     }
 
     public static void main(String[] args) throws Exception {

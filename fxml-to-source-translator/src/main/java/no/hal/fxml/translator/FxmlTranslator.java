@@ -9,9 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import javafx.event.ActionEvent;
 import javafx.event.Event;
-import javafx.event.EventHandler;
 import javafx.fxml.FXML;
 import no.hal.fxml.model.FxmlCode.BeanElement;
 import no.hal.fxml.model.FxmlCode.BeanProperty;
@@ -62,6 +60,7 @@ public class FxmlTranslator {
     }
 
     private QName rootType = null;
+    private Class<?> controllerClass;
 
     private List<Statement> builderStatements = new ArrayList<>();
     private List<Statement> initializerStatements = new ArrayList<>();
@@ -94,28 +93,26 @@ public class FxmlTranslator {
         return varNum == 0 ? baseName : baseName + varNum;
     }
 
-    public record FxmlTranslation(MethodDeclaration builder, MethodDeclaration initializer, List<MethodDeclaration> extraMethodds) {
+    public record FxmlTranslation(MethodDeclaration builder, Class<?> controllerClass, MethodDeclaration initializer) {
     }
 
     public static FxmlTranslation translateFxml(Document fxmlDocument, ClassLoader classLoader) {
         FxmlTranslator translator = new FxmlTranslator(fxmlDocument, classLoader);
+        if (fxmlDocument.controllerClassName() != null) {
+            translator.controllerClass = translator.classResolver.resolve(fxmlDocument.controllerClassName());
+        }
         FxmlElement rootElement = fxmlDocument.instanceElement();
         Expression rootExpression = translator.fxml2BuilderStatements(rootElement);
         translator.emitBuilderStatement(new Return(rootExpression));
         MethodDeclaration initializerMethod = null;
-        List<MethodDeclaration> extraMethods = null;
-        if (fxmlDocument.controllerClassName() != null) {
-            Class<?> controllerClass = translator.classResolver.resolve(fxmlDocument.controllerClassName());
-            translator.fxml2InitializerStatements(controllerClass);
-            initializerMethod = new MethodDeclaration("initialize", null, List.of(new VariableDeclaration(fxmlDocument.controllerClassName(), "controller", null)), translator.initializerStatements);
-            extraMethods = translator.methodReferences.entrySet().stream()
-                .map(entry -> translator.bridgeMethodDeclaration(controllerClass, entry.getKey(), entry.getValue()))
-                .toList();
+        if (translator.controllerClass != null) {
+            translator.fxml2InitializerStatements();
+            initializerMethod = new MethodDeclaration("private", "initializeController", null, List.of(), translator.initializerStatements);
         }
         return new FxmlTranslation(
-            new MethodDeclaration("build", translator.rootType, List.of(), translator.builderStatements),
-            initializerMethod,
-            extraMethods
+            new MethodDeclaration("private", "build", translator.rootType, List.of(), translator.builderStatements),
+            translator.controllerClass,
+            initializerMethod
         );
     }
     public static FxmlTranslation translateFxml(String fxml, ClassLoader classLoader) throws Exception {
@@ -277,8 +274,6 @@ public class FxmlTranslator {
         };
     }
 
-    private String bridgeMethodFormat = "hash_%s";
-
     private Expression translateValueExpression(ValueExpression valueExpression, Class<?> targetClass) {
         return switch (valueExpression) {
             case ValueExpression.String(String value) -> new Literal(value, targetClass);
@@ -289,25 +284,40 @@ public class FxmlTranslator {
                 List<Expression> argList = new ArrayList<>();
                 // argList will be updated, according to argument list of controller method
                 methodReferences.put(methodName, argList);
-                yield new LambdaExpression("event", new MethodCall((ObjectTarget) null, bridgeMethodFormat.formatted(methodName), argList));
+                yield new LambdaExpression("event", controllerEventMethodCall(methodName, "event"));
             }
         };
     }
 
+    private Expression controllerEventMethodCall(String methodName, String eventArgName) {
+        Method method = reflectionHelper.getMethod(controllerClass, methodName, Event.class);
+        if (method == null) {
+            method = reflectionHelper.getMethod(controllerClass, methodName);
+        }
+        if (method == null) {
+            throw new IllegalStateException("No method in " + controllerClass + " for method reference #" + methodName);
+        }
+        List<Expression> argList = new ArrayList<>();
+        if (method.getParameterCount() == 1) {
+            argList.add(new VariableExpression(eventArgName));
+        }
+        return new MethodCall(new ExpressionTarget("this.controller"), method.getName(), argList);
+    }
+    
     //
 
-    private void fxml2InitializerStatements(Class<?> controllerClass) {
+    private void fxml2InitializerStatements() {
         var fxmlAnnotatedMembers = reflectionHelper.findAnnotatedMembers(controllerClass, FXML.class);
         for (var member : fxmlAnnotatedMembers.keySet()) {
             switch (member) {
                 case Field field -> {
-                    var fieldAssignment = new FieldAssignment("controller", member.getName(), new GetFxmlObjectCall(member.getName()));
+                    var fieldAssignment = new FieldAssignment("this.controller", member.getName(), new GetFxmlObjectCall(member.getName()));
                     emitInitializerStatement(fieldAssignment);
                 }
                 case Method method -> {
                     String propertyName = reflectionHelper.propertyName("set", method.getName());
                     if (idMap.containsKey(propertyName)) {
-                        var methodCall = new MethodCall("controller", member.getName(), new GetFxmlObjectCall(propertyName));
+                        var methodCall = new MethodCall("this.controller", member.getName(), new GetFxmlObjectCall(propertyName));
                         emitInitializerStatement(methodCall);
                     }
                 }
@@ -317,25 +327,6 @@ public class FxmlTranslator {
         fxmlAnnotatedMembers.keySet().stream()
             .filter(member -> member instanceof Method && "initialize".equals(member.getName()))
             .forEach(method -> emitInitializerStatement(new MethodCall("controller", method.getName())));
-    }
-
-    private MethodDeclaration bridgeMethodDeclaration(Class<?> controllerClass, String methodName, List<Expression> argList) {
-        Method method = reflectionHelper.getMethod(controllerClass, methodName, Event.class);
-        if (method == null) {
-            method = reflectionHelper.getMethod(controllerClass, methodName);
-        }
-        if (method == null) {
-            throw new IllegalStateException("No method in " + controllerClass + " for method reference #" + methodName);
-        }
-        List<VariableDeclaration> paramList = new ArrayList<>();
-        if (method.getParameterCount() == 1) {
-            paramList.add(new VariableDeclaration(QName.valueOf(method.getParameterTypes()[0].getName()), "event", null));
-            argList.add(new VariableExpression("event"));
-        }
-        MethodDeclaration methodDeclaration = new MethodDeclaration(bridgeMethodFormat.formatted(methodName), null, paramList, List.of(
-            new MethodCall(new ExpressionTarget("controller"), methodName, argList)
-        ));
-        return methodDeclaration;
     }
 
     public static void main(String[] args) throws Exception {

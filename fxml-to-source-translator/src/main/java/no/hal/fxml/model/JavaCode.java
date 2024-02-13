@@ -37,15 +37,6 @@ public class JavaCode {
         }
     }
 
-    public record TypeRef(QName typeName, List<TypeRef> typeParams) {
-        public TypeRef(QName typeName, TypeRef... typeParams) {
-            this(typeName, List.of(typeParams));
-        }
-        public TypeRef(String typeName, TypeRef... typeParams) {
-            this(QName.valueOf(typeName), List.of(typeParams));
-        }
-    }
-
     public record ClassDeclaration(QName className, TypeRef superClass, List<TypeRef> superInterfaces, List<Member> members) {
         public ClassDeclaration(QName className, TypeRef superClass, List<TypeRef> superInterfaces, Member... members) {
             this(className, superClass, superInterfaces, List.of(members));
@@ -67,7 +58,7 @@ public class JavaCode {
         }
     }
 
-    public record MethodDeclaration(String modifiers, String methodName, QName returnType, List<VariableDeclaration> parameters, List<Statement> body)
+    public record MethodDeclaration(String modifiers, String methodName, TypeRef returnType, List<VariableDeclaration> parameters, List<Statement> body)
         implements Member {
         @Override
         public String toString() {
@@ -92,8 +83,8 @@ public class JavaCode {
         public VariableDeclaration(QName typeName, String variableName, Expression expression) {
             this(new TypeRef(typeName), variableName, expression);
         }
-        public VariableDeclaration(String typeName, String variableName, Expression expression) {
-            this(QName.valueOf(typeName), variableName, expression);
+        public VariableDeclaration(String typeRef, String variableName, Expression expression) {
+            this(TypeRef.valueOf(typeRef), variableName, expression);
         }
         public static VariableDeclaration instantiation(String className, String variableName) {
             return new VariableDeclaration(className, variableName, new ConstructorCall(className));

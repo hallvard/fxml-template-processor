@@ -1,14 +1,12 @@
 package no.hal.fxml.translator;
 
-import java.util.Map;
-import no.hal.fxml.builder.AbstractFxBuilder;
-
 import javafx.scene.paint.Color;
 import javafx.scene.control.Label;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.control.TextField;
-import java.lang.String;
 import javafx.scene.layout.Pane;
+import java.util.Map;
+import no.hal.fxml.builder.AbstractFxBuilder;
 
 public class TestOutput extends AbstractFxBuilder<Pane, FxmlTranslatorTest.Controller> {
 
@@ -20,17 +18,9 @@ public class TestOutput extends AbstractFxBuilder<Pane, FxmlTranslatorTest.Contr
       super(namespace);
    }
 
-   protected Pane load() {
-    var root = build();
-    // only if controller is declared in FXML
-    setController(new FxmlTranslatorTest.Controller());
-    initializeController();
-    return root;
-   }
-
    protected Pane build() {
       Pane pane = new Pane();
-      String string = String.valueOf("Enter answer");
+      java.lang.String string = java.lang.String.valueOf("Enter answer");
       setFxmlObject("prompt", string);
       TextField textField = new TextField();
       setFxmlObject("answerInput", textField);

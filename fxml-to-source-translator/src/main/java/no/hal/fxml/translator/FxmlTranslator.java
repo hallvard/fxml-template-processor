@@ -31,7 +31,6 @@ import no.hal.fxml.model.Instantiation.Factory;
 import no.hal.fxml.model.Instantiation.Value;
 import no.hal.fxml.model.JavaCode;
 import no.hal.fxml.model.JavaCode.ClassDeclaration;
-import no.hal.fxml.model.JavaCode.TypeRef;
 import no.hal.fxml.model.JavaCode.ClassTarget;
 import no.hal.fxml.model.JavaCode.ConstructorCall;
 import no.hal.fxml.model.JavaCode.ConstructorDeclaration;
@@ -53,6 +52,7 @@ import no.hal.fxml.model.JavaCode.Statement;
 import no.hal.fxml.model.JavaCode.VariableDeclaration;
 import no.hal.fxml.model.JavaCode.VariableExpression;
 import no.hal.fxml.model.QName;
+import no.hal.fxml.model.TypeRef;
 import no.hal.fxml.model.ValueExpression;
 import no.hal.fxml.parser.FxmlParser;
 
@@ -114,9 +114,9 @@ public class FxmlTranslator {
         List<Member> members = new ArrayList<>();
         members.add(new ConstructorDeclaration("public", "TestOutput", List.of()));
         members.add(new ConstructorDeclaration("public", "TestOutput", List.of(
-            new VariableDeclaration(new TypeRef("java.util.Map", new TypeRef("String"), new TypeRef("Object")), "namespace", null)
+            new VariableDeclaration(TypeRef.valueOf("java.util.Map<String, Object>"), "namespace", null)
         )));
-        members.add(new MethodDeclaration("protected", "build", translator.rootType, List.of(), translator.builderStatements));
+        members.add(new MethodDeclaration("protected", "build", new TypeRef(translator.rootType), List.of(), translator.builderStatements));
         if (translator.controllerClass != null) {
             translator.fxml2InitializerStatements();
             members.add(new MethodDeclaration("protected", "initializeController", null, List.of(), translator.initializerStatements));
@@ -125,7 +125,7 @@ public class FxmlTranslator {
             new ClassDeclaration(
                 QName.valueOf("no.hal.fxml.translator.TestOutput"),
                 new TypeRef("no.hal.fxml.builder.AbstractFxBuilder",
-                    new TypeRef("javafx.scene.layout.Pane"),
+                    TypeRef.valueOf("javafx.scene.layout.Pane"),
                     new TypeRef(fxmlDocument.controllerClassName() != null ? fxmlDocument.controllerClassName() : QName.valueOf("Object"))
                 ),
                 null,  members
@@ -355,7 +355,6 @@ public class FxmlTranslator {
         formatter.append("""
             package %s;
 
-            import java.util.Map;
             """.formatted(translation.builderClass().className().packageName())
         );
 

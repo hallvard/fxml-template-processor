@@ -9,7 +9,6 @@ import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import no.hal.fxml.model.FxmlCode.Document;
 import no.hal.fxml.model.JavaCode.ClassDeclaration;
-import no.hal.fxml.model.JavaCode.TypeRef;
 import no.hal.fxml.model.JavaCode.ClassTarget;
 import no.hal.fxml.model.JavaCode.ConstructorCall;
 import no.hal.fxml.model.JavaCode.ConstructorDeclaration;
@@ -26,6 +25,7 @@ import no.hal.fxml.model.JavaCode.Statement;
 import no.hal.fxml.model.JavaCode.VariableDeclaration;
 import no.hal.fxml.model.JavaCode.VariableExpression;
 import no.hal.fxml.model.QName;
+import no.hal.fxml.model.TypeRef;
 import no.hal.fxml.parser.FxmlParser;
 
 public class FxmlTranslatorTest {
@@ -89,14 +89,14 @@ public class FxmlTranslatorTest {
         testFxmlTranslator(FxmlParser.parseFxml(FXML_SAMPLE),
             new ClassDeclaration(
                 QName.valueOf("no.hal.fxml.translator.TestOutput"),
-                new TypeRef("no.hal.fxml.builder.AbstractFxBuilder", new TypeRef("javafx.scene.layout.Pane"), new TypeRef("no.hal.fxml.translator.FxmlTranslatorTest$Controller")),
+                TypeRef.valueOf("no.hal.fxml.builder.AbstractFxBuilder<javafx.scene.layout.Pane, no.hal.fxml.translator.FxmlTranslatorTest$Controller>"),
                 null,
                 List.of(
                     new ConstructorDeclaration("public", "TestOutput", List.of()),
                     new ConstructorDeclaration("public", "TestOutput", List.of(
-                        new VariableDeclaration(new TypeRef("java.util.Map", new TypeRef("String"), new TypeRef("Object")), "namespace", null)
+                        new VariableDeclaration(TypeRef.valueOf("java.util.Map<String, Object>"), "namespace", null)
                     )),
-                    new MethodDeclaration("protected", "build", QName.valueOf("javafx.scene.layout.Pane"), List.of(),
+                    new MethodDeclaration("protected", "build", TypeRef.valueOf("javafx.scene.layout.Pane"), List.of(),
                         List.<Statement>of(
                             // Pane pane = new Pane()
                             VariableDeclaration.instantiation("javafx.scene.layout.Pane", "pane"),

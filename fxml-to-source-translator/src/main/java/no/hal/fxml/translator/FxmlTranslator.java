@@ -29,14 +29,21 @@ import no.hal.fxml.model.Instantiation.Constant;
 import no.hal.fxml.model.Instantiation.Constructor;
 import no.hal.fxml.model.Instantiation.Factory;
 import no.hal.fxml.model.Instantiation.Value;
+import no.hal.fxml.model.JavaCode;
+import no.hal.fxml.model.JavaCode.ClassDeclaration;
+import no.hal.fxml.model.JavaCode.TypeRef;
 import no.hal.fxml.model.JavaCode.ClassTarget;
 import no.hal.fxml.model.JavaCode.ConstructorCall;
+import no.hal.fxml.model.JavaCode.ConstructorDeclaration;
 import no.hal.fxml.model.JavaCode.Expression;
 import no.hal.fxml.model.JavaCode.ExpressionTarget;
 import no.hal.fxml.model.JavaCode.FieldAssignment;
+import no.hal.fxml.model.JavaCode.Formatter;
 import no.hal.fxml.model.JavaCode.GetFxmlObjectCall;
+import no.hal.fxml.model.JavaCode.Imports;
 import no.hal.fxml.model.JavaCode.LambdaExpression;
 import no.hal.fxml.model.JavaCode.Literal;
+import no.hal.fxml.model.JavaCode.Member;
 import no.hal.fxml.model.JavaCode.MethodCall;
 import no.hal.fxml.model.JavaCode.MethodDeclaration;
 import no.hal.fxml.model.JavaCode.ObjectTarget;
@@ -93,7 +100,7 @@ public class FxmlTranslator {
         return varNum == 0 ? baseName : baseName + varNum;
     }
 
-    public record FxmlTranslation(MethodDeclaration builder, Class<?> controllerClass, MethodDeclaration initializer) {
+    public record FxmlTranslation(ClassDeclaration builderClass, Class<?> controllerClass) {
     }
 
     public static FxmlTranslation translateFxml(Document fxmlDocument, ClassLoader classLoader) {
@@ -104,15 +111,26 @@ public class FxmlTranslator {
         FxmlElement rootElement = fxmlDocument.instanceElement();
         Expression rootExpression = translator.fxml2BuilderStatements(rootElement);
         translator.emitBuilderStatement(new Return(rootExpression));
-        MethodDeclaration initializerMethod = null;
+        List<Member> members = new ArrayList<>();
+        members.add(new ConstructorDeclaration("public", "TestOutput", List.of()));
+        members.add(new ConstructorDeclaration("public", "TestOutput", List.of(
+            new VariableDeclaration(new TypeRef("java.util.Map", new TypeRef("String"), new TypeRef("Object")), "namespace", null)
+        )));
+        members.add(new MethodDeclaration("protected", "build", translator.rootType, List.of(), translator.builderStatements));
         if (translator.controllerClass != null) {
             translator.fxml2InitializerStatements();
-            initializerMethod = new MethodDeclaration("private", "initializeController", null, List.of(), translator.initializerStatements);
+            members.add(new MethodDeclaration("protected", "initializeController", null, List.of(), translator.initializerStatements));
         }
         return new FxmlTranslation(
-            new MethodDeclaration("private", "build", translator.rootType, List.of(), translator.builderStatements),
-            translator.controllerClass,
-            initializerMethod
+            new ClassDeclaration(
+                QName.valueOf("no.hal.fxml.translator.TestOutput"),
+                new TypeRef("no.hal.fxml.builder.AbstractFxBuilder",
+                    new TypeRef("javafx.scene.layout.Pane"),
+                    new TypeRef(fxmlDocument.controllerClassName() != null ? fxmlDocument.controllerClassName() : QName.valueOf("Object"))
+                ),
+                null,  members
+                ),
+            translator.controllerClass
         );
     }
     public static FxmlTranslation translateFxml(String fxml, ClassLoader classLoader) throws Exception {
@@ -329,6 +347,29 @@ public class FxmlTranslator {
             .forEach(method -> emitInitializerStatement(new MethodCall("controller", method.getName())));
     }
 
+    //
+
+    public static String toFxmlBuilderSource(FxmlTranslation translation) {
+        Imports imports = new Imports(Map.<String, QName>of());
+        JavaCode.Formatter formatter = new Formatter(imports);
+        formatter.append("""
+            package %s;
+
+            import java.util.Map;
+            """.formatted(translation.builderClass().className().packageName())
+        );
+
+        String classDecl = formatter.format(translation, (f, t) -> {
+            f.format(t.builderClass());
+        });
+        
+        formatter.format(imports);
+        formatter.newline();
+        formatter.append(classDecl);
+
+        return formatter.toString();
+    }
+
     public static void main(String[] args) throws Exception {
         var translation = FxmlTranslator.translateFxml("""
             <?import javafx.scene.control.*?>
@@ -346,7 +387,6 @@ public class FxmlTranslator {
                <Rectangle x="0.0" y="0.0" width="100.0" height="100.0" fill="$red"/>
             </Pane>
             """, FxmlTranslator.class.getClassLoader());
-        System.out.println(translation.builder);
-        System.out.println(translation.initializer);
+        System.out.println(translation.builderClass());
     }
 }

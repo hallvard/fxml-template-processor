@@ -8,8 +8,11 @@ import org.junit.jupiter.api.Test;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import no.hal.fxml.model.FxmlCode.Document;
+import no.hal.fxml.model.JavaCode.ClassDeclaration;
+import no.hal.fxml.model.JavaCode.TypeRef;
 import no.hal.fxml.model.JavaCode.ClassTarget;
 import no.hal.fxml.model.JavaCode.ConstructorCall;
+import no.hal.fxml.model.JavaCode.ConstructorDeclaration;
 import no.hal.fxml.model.JavaCode.ExpressionTarget;
 import no.hal.fxml.model.JavaCode.FieldAssignment;
 import no.hal.fxml.model.JavaCode.GetFxmlObjectCall;
@@ -17,7 +20,6 @@ import no.hal.fxml.model.JavaCode.LambdaExpression;
 import no.hal.fxml.model.JavaCode.Literal;
 import no.hal.fxml.model.JavaCode.MethodCall;
 import no.hal.fxml.model.JavaCode.MethodDeclaration;
-import no.hal.fxml.model.JavaCode.ObjectTarget;
 import no.hal.fxml.model.JavaCode.Return;
 import no.hal.fxml.model.JavaCode.SetFxmlObjectCall;
 import no.hal.fxml.model.JavaCode.Statement;
@@ -28,28 +30,24 @@ import no.hal.fxml.parser.FxmlParser;
 
 public class FxmlTranslatorTest {
 
-    private void testFxmlTranslator(MethodDeclaration actual, MethodDeclaration expected) throws Exception {
+    private void testFxmlTranslator(ClassDeclaration actual, ClassDeclaration expected) throws Exception {
         Assertions.assertEquals(expected, actual,
             actual + "\nvs.\n" + expected
         );
     }
 
-    private void testFxmlTranslator(Document fxmlDoc, List<MethodDeclaration> expectedMethods) throws Exception {
+    private void testFxmlTranslator(Document fxmlDoc, ClassDeclaration expectedBuilder) throws Exception {
         FxmlTranslator.FxmlTranslation actual = null;
         try {
             actual = FxmlTranslator.translateFxml(fxmlDoc, getClass().getClassLoader());
         } catch(Exception ex) {
             ex.printStackTrace();
+        } finally {
+            System.out.println(
+                FxmlTranslator.toFxmlBuilderSource(actual)
+            );
         }
-        testFxmlTranslator(actual.builder(), expectedMethods.get(0));
-        testFxmlTranslator(actual.initializer(), expectedMethods.get(1));
-        System.out.println(
-            FxmlTranslationOutput.toFxmlBuilderSource(actual, QName.valueOf("no.hal.fxml.translator.TestOutput"))
-        );
-    }
-
-    private void testFxmlTranslator(String fxmlSource, MethodDeclaration... expectedMethods) throws Exception {
-        testFxmlTranslator(FxmlParser.parseFxml(fxmlSource), List.of(expectedMethods));
+        testFxmlTranslator(actual.builderClass(), expectedBuilder);
     }
 
     public static class Controller {
@@ -88,62 +86,73 @@ public class FxmlTranslatorTest {
 
     @Test
     public void testFxmlTranslator() throws Exception {
-        testFxmlTranslator(FXML_SAMPLE,
-            new MethodDeclaration("private", "build", QName.valueOf("javafx.scene.layout.Pane"), List.of(),
-                List.<Statement>of(
-                    // Pane pane = new Pane()
-                    VariableDeclaration.instantiation("javafx.scene.layout.Pane", "pane"),
-                        // String string = String.valueOf("Enter answer")
-                        new VariableDeclaration("java.lang.String", "string",
-                            new MethodCall(new ClassTarget("java.lang.String"), "valueOf", List.of(Literal.string("Enter answer")))
-                        ),
-                            new SetFxmlObjectCall("prompt", "string"),
-                        // TextField textField = new TextField()
-                        VariableDeclaration.instantiation("javafx.scene.control.TextField", "textField"),
-                            new SetFxmlObjectCall("answerInput", "textField"),
-                            // textField.setId("answerInput")
-                            new MethodCall("textField", "setId", Literal.string("answerInput")),
-                            // textField.setOnAction((event) -> hash_onAnswerInput(event))
-                            new MethodCall("textField", "setOnAction",
-                                new LambdaExpression("event", new MethodCall(new ExpressionTarget("this.controller"), "onAnswerInput", new VariableExpression("event")))
-                            ),
-                            // textField.setText(getFxmlObject("prompt"))
-                            new MethodCall("textField", "setPromptText", new GetFxmlObjectCall("prompt")),
-                        // Color color = new Color(1.0, 0.0, 0.0, 1.0)
-                        new VariableDeclaration("javafx.scene.paint.Color", "color",
-                            new ConstructorCall(QName.valueOf("javafx.scene.paint.Color"), List.of(
-                                new Literal("1.0", Double.TYPE),
-                                new Literal("0.0", Double.TYPE),
-                                new Literal("0.0", Double.TYPE),
-                                new Literal("1", Double.TYPE)
-                            ))
-                        ),
-                        new SetFxmlObjectCall("red", "color"),
-                        // Label label = new Label()
-                        VariableDeclaration.instantiation("javafx.scene.control.Label", "label"),
-                            new SetFxmlObjectCall("label1", "label"),
-                            // label.setId("label1")
-                            new MethodCall("label", "setId", Literal.string("label1")),
-                            // label.setText("Hi!")
-                            new MethodCall("label", "setText", Literal.string("Hi!")),
-                            // pane.getChildren().add(label)
-                            new MethodCall(new MethodCall("pane", "getChildren"), "add", new VariableExpression("label")),
-                            // pane.getChildren().add(getFxmlObject("answerInput"))
-                            new MethodCall(new MethodCall("pane", "getChildren"), "add", new GetFxmlObjectCall("answerInput")),
-                        VariableDeclaration.instantiation("javafx.scene.shape.Rectangle", "rectangle"),
-                            // rectangle.setFill(red)
-                            new MethodCall("rectangle", "setFill", new GetFxmlObjectCall("red")),
-                            // pane.getChildren().add(rectangle)
-                            new MethodCall(new MethodCall("pane", "getChildren"), "add", new VariableExpression("rectangle")),
-                        new Return(new VariableExpression("pane"))
-                )
-            ),
-            new MethodDeclaration("private", "initializeController", null, List.of(),
-                List.<Statement>of(
-                    // controller.red = getFxmlObject("red")
-                    new FieldAssignment("this.controller", "red", new GetFxmlObjectCall("red")),
-                    // controller.setLabel1(getFxmlObject("label1"))
-                    new MethodCall("this.controller", "setLabel1", new GetFxmlObjectCall("label1"))
+        testFxmlTranslator(FxmlParser.parseFxml(FXML_SAMPLE),
+            new ClassDeclaration(
+                QName.valueOf("no.hal.fxml.translator.TestOutput"),
+                new TypeRef("no.hal.fxml.builder.AbstractFxBuilder", new TypeRef("javafx.scene.layout.Pane"), new TypeRef("no.hal.fxml.translator.FxmlTranslatorTest$Controller")),
+                null,
+                List.of(
+                    new ConstructorDeclaration("public", "TestOutput", List.of()),
+                    new ConstructorDeclaration("public", "TestOutput", List.of(
+                        new VariableDeclaration(new TypeRef("java.util.Map", new TypeRef("String"), new TypeRef("Object")), "namespace", null)
+                    )),
+                    new MethodDeclaration("protected", "build", QName.valueOf("javafx.scene.layout.Pane"), List.of(),
+                        List.<Statement>of(
+                            // Pane pane = new Pane()
+                            VariableDeclaration.instantiation("javafx.scene.layout.Pane", "pane"),
+                                // String string = String.valueOf("Enter answer")
+                                new VariableDeclaration("java.lang.String", "string",
+                                    new MethodCall(new ClassTarget("java.lang.String"), "valueOf", List.of(Literal.string("Enter answer")))
+                                ),
+                                    new SetFxmlObjectCall("prompt", "string"),
+                                // TextField textField = new TextField()
+                                VariableDeclaration.instantiation("javafx.scene.control.TextField", "textField"),
+                                    new SetFxmlObjectCall("answerInput", "textField"),
+                                    // textField.setId("answerInput")
+                                    new MethodCall("textField", "setId", Literal.string("answerInput")),
+                                    // textField.setOnAction((event) -> hash_onAnswerInput(event))
+                                    new MethodCall("textField", "setOnAction",
+                                        new LambdaExpression("event", new MethodCall(new ExpressionTarget("this.controller"), "onAnswerInput", new VariableExpression("event")))
+                                    ),
+                                    // textField.setText(getFxmlObject("prompt"))
+                                    new MethodCall("textField", "setPromptText", new GetFxmlObjectCall("prompt")),
+                                // Color color = new Color(1.0, 0.0, 0.0, 1.0)
+                                new VariableDeclaration("javafx.scene.paint.Color", "color",
+                                    new ConstructorCall(QName.valueOf("javafx.scene.paint.Color"), List.of(
+                                        new Literal("1.0", Double.TYPE),
+                                        new Literal("0.0", Double.TYPE),
+                                        new Literal("0.0", Double.TYPE),
+                                        new Literal("1", Double.TYPE)
+                                    ))
+                                ),
+                                new SetFxmlObjectCall("red", "color"),
+                                // Label label = new Label()
+                                VariableDeclaration.instantiation("javafx.scene.control.Label", "label"),
+                                    new SetFxmlObjectCall("label1", "label"),
+                                    // label.setId("label1")
+                                    new MethodCall("label", "setId", Literal.string("label1")),
+                                    // label.setText("Hi!")
+                                    new MethodCall("label", "setText", Literal.string("Hi!")),
+                                    // pane.getChildren().add(label)
+                                    new MethodCall(new MethodCall("pane", "getChildren"), "add", new VariableExpression("label")),
+                                    // pane.getChildren().add(getFxmlObject("answerInput"))
+                                    new MethodCall(new MethodCall("pane", "getChildren"), "add", new GetFxmlObjectCall("answerInput")),
+                                VariableDeclaration.instantiation("javafx.scene.shape.Rectangle", "rectangle"),
+                                    // rectangle.setFill(red)
+                                    new MethodCall("rectangle", "setFill", new GetFxmlObjectCall("red")),
+                                    // pane.getChildren().add(rectangle)
+                                    new MethodCall(new MethodCall("pane", "getChildren"), "add", new VariableExpression("rectangle")),
+                                new Return(new VariableExpression("pane"))
+                        )
+                    ),
+                    new MethodDeclaration("protected", "initializeController", null, List.of(),
+                        List.<Statement>of(
+                            // controller.red = getFxmlObject("red")
+                            new FieldAssignment("this.controller", "red", new GetFxmlObjectCall("red")),
+                            // controller.setLabel1(getFxmlObject("label1"))
+                            new MethodCall("this.controller", "setLabel1", new GetFxmlObjectCall("label1"))
+                        )
+                    )
                 )
             )
        );

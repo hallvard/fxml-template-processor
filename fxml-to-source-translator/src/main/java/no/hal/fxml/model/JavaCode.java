@@ -4,9 +4,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 public class JavaCode {
@@ -17,11 +15,18 @@ public class JavaCode {
             imports = new HashMap<>(imports);
         }
 
+        private boolean autoImports(QName qName) {
+            return qName.packageName() == null || "java.lang".equals(qName.packageName());
+        }
+
         public boolean imports(QName qName) {
-            return "java.lang".equals(qName.packageName()) || qName.equals(imports.get(qName.className()));
+            return autoImports(qName) || qName.equals(imports.get(qName.className()));
         }
 
         public boolean importIfAvailable(QName qName) {
+            if (autoImports(qName)) {
+                return false;
+            }
             String key = qName.className();
             if (imports.containsKey(key)) {
                 return qName.equals(imports.get(key));
@@ -32,8 +37,34 @@ public class JavaCode {
         }
     }
 
-    public sealed interface Member permits MethodDeclaration, VariableDeclaration {
+    public record TypeRef(QName typeName, List<TypeRef> typeParams) {
+        public TypeRef(QName typeName, TypeRef... typeParams) {
+            this(typeName, List.of(typeParams));
+        }
+        public TypeRef(String typeName, TypeRef... typeParams) {
+            this(QName.valueOf(typeName), List.of(typeParams));
+        }
+    }
+
+    public record ClassDeclaration(QName className, TypeRef superClass, List<TypeRef> superInterfaces, List<Member> members) {
+        public ClassDeclaration(QName className, TypeRef superClass, List<TypeRef> superInterfaces, Member... members) {
+            this(className, superClass, superInterfaces, List.of(members));
+        }
+    }
+
+    public sealed interface Member permits ConstructorDeclaration, MethodDeclaration, VariableDeclaration {
         public String getName();
+    }
+
+    public record ConstructorDeclaration(String modifiers, String className, List<VariableDeclaration> parameters, List<Statement> body)
+        implements Member {
+        public ConstructorDeclaration(String modifiers, String className, List<VariableDeclaration> parameters) {
+            this(modifiers, className, parameters, null);
+        }
+        @Override
+        public String getName() {
+            return className;
+        }
     }
 
     public record MethodDeclaration(String modifiers, String methodName, QName returnType, List<VariableDeclaration> parameters, List<Statement> body)
@@ -56,10 +87,13 @@ public class JavaCode {
         permits VariableDeclaration, Return, ExecutableCall, FieldAssignment {
     }
 
-    public record VariableDeclaration(QName className, String variableName, Expression expression)
+    public record VariableDeclaration(TypeRef typeName, String variableName, Expression expression)
         implements Statement, Member {
-        public VariableDeclaration(String className, String variableName, Expression expression) {
-            this(QName.valueOf(className), variableName, expression);
+        public VariableDeclaration(QName typeName, String variableName, Expression expression) {
+            this(new TypeRef(typeName), variableName, expression);
+        }
+        public VariableDeclaration(String typeName, String variableName, Expression expression) {
+            this(QName.valueOf(typeName), variableName, expression);
         }
         public static VariableDeclaration instantiation(String className, String variableName) {
             return new VariableDeclaration(className, variableName, new ConstructorCall(className));
@@ -67,8 +101,8 @@ public class JavaCode {
         @Override
         public String toString() {
             return (expression != null 
-                ? "%s %s = %s".formatted(className != null ? className : "var", variableName, expression)
-                :  "%s %s".formatted(className != null ? className : "var", variableName)
+                ? "%s %s = %s".formatted(typeName != null ? typeName : "var", variableName, expression)
+                :  "%s %s".formatted(typeName != null ? typeName : "var", variableName)
             );
         }
         @Override
@@ -292,6 +326,14 @@ public class JavaCode {
         public void newline() {
             newlines(1);
         }
+        public void spaces(int i) {
+            while (i-- > 0) {
+                append(" ");
+            }
+        }
+        public void space() {
+            spaces(1);
+        }
 
         public <T> void withIndentation(int d, T t, BiConsumer<Formatter, T> formatter) {
             indentLevel += d;
@@ -302,27 +344,7 @@ public class JavaCode {
             withIndentation(1, t, formatter);
         }
 
-        public void format(MethodDeclaration method) {
-            indent();
-            if (append(method.modifiers())) {
-                append(" ");
-            }
-            if (method.returnType() != null) {
-                format(method.returnType());
-            } else {
-                append("void");
-            }
-            append(" ");
-            append(method.methodName());
-            formatList("(", method.parameters(), ") {\n", this::format);
-            withIndentation(method.body(), Formatter::format);
-            indent();
-            append("}\n");
-        }
-
-        public void format(List<Statement> statements) {
-            statements.forEach(this::format);
-        }
+        //
 
         public String toString(QName className) {
             if (imports.importIfAvailable(className)) {
@@ -335,50 +357,122 @@ public class JavaCode {
         public void format(QName className) {
             append(toString(className));
         }
-        public void format(Class<?> clazz) {
-            format(QName.valueOf(clazz.getName()));
-        }
 
-        public void format(VariableDeclaration varDecl) {
-            format(varDecl.className());
-            append(" ");
-            append(varDecl.variableName());
-            if (varDecl.expression() != null) {
-                append(" = ");
-                format(varDecl.expression());
+        //
+
+        public void format(TypeRef classRef) {
+            format(classRef.typeName());
+            if (classRef.typeParams() != null && (! classRef.typeParams().isEmpty())) {
+                formatList("<", classRef.typeParams(), ">", Formatter::format);
             }
         }
 
-        public void format(Statement statement) {
+        public void format(ClassDeclaration classDeclaration) {
+            append("public class ");
+            append(classDeclaration.className.className());
+            if (classDeclaration.superClass() != null) {
+                append(" extends ");
+                format(classDeclaration.superClass());
+            }
+            if (classDeclaration.superInterfaces() != null && (! classDeclaration.superInterfaces().isEmpty())) {
+                append(" implements ");
+                formatList("", classDeclaration.superInterfaces(), "", Formatter::format);
+            }
+            append(" {\n");
+            withIndentation(classDeclaration.members(), (f, m) -> m.forEach(f::format));
+            append("}\n");
+        }
+
+        public void format(Member member) {
+            newline();
+            switch (member) {
+                case ConstructorDeclaration consDecl -> format(consDecl);
+                case MethodDeclaration methodDecl -> format(methodDecl);
+                case VariableDeclaration varDecl -> formatStatement(varDecl);
+            }
+        }
+
+        public void format(ConstructorDeclaration cons) {
+            indent();
+            if (append(cons.modifiers())) {
+                space();
+            }
+            append(cons.className());
+            formatList("(", cons.parameters(), ") {\n", Formatter::format);
+            withIndentation(cons, (f, c) -> {
+                if (c.body() != null) {
+                    f.format(c.body());
+                } else {
+                    indent();
+                    formatList("super(", c.parameters().stream().map(VariableDeclaration::variableName).toList(), ");\n", Formatter::append);
+                }
+            });
+            indent();
+            append("}\n");
+        }
+
+        public void format(MethodDeclaration method) {
+            indent();
+            if (append(method.modifiers())) {
+                space();
+            }
+            if (method.returnType() != null) {
+                format(method.returnType());
+            } else {
+                append("void");
+            }
+            space();
+            append(method.methodName());
+            formatList("(", method.parameters(), ") {\n", Formatter::format);
+            withIndentation(method.body(), Formatter::format);
+            indent();
+            append("}\n");
+        }
+
+        public void format(List<Statement> statements) {
+            statements.forEach(this::formatStatement);
+        }
+
+        public void format(VariableDeclaration varDecl) {
+            format(varDecl.typeName());
+            space();
+            append(varDecl.variableName());
+            if (varDecl.expression() != null) {
+                append(" = ");
+                formatExpression(varDecl.expression());
+            }
+        }
+
+        public void formatStatement(Statement statement) {
             indent();
             switch (statement) {
                 case VariableDeclaration varDecl -> format(varDecl);
                 case Return ret -> {
                     append("return ");
-                    format(ret.expression());
+                    formatExpression(ret.expression());
                 }
-                case ExecutableCall call -> format((Expression) call);
-                case FieldAssignment fieldAssignment -> format((Expression) fieldAssignment);
+                case ExecutableCall call -> formatExpression(call);
+                case FieldAssignment fieldAssignment -> formatExpression(fieldAssignment);
             }
             append(";\n");
         }
 
-        public <T> void formatList(String prefix, List<T> items, String suffix, Consumer<T> formatter) {
+        public <T> void formatList(String prefix, List<T> items, String suffix, BiConsumer<Formatter, T> formatter) {
             append(prefix);
             for (int i = 0; i < items.size(); i++) {
                 if (i > 0) {
                     append(", ");
                 }
-                formatter.accept(items.get(i));
+                formatter.accept(this, items.get(i));
             }
             append(suffix);
         }
 
         public void formatArgumentList(List<Expression> arguments) {
-            formatList("(", arguments, ")", this::format);
+            formatList("(", arguments, ")", Formatter::formatExpression);
         }
 
-        public void format(Expression expression) {
+        public void formatExpression(Expression expression) {
             switch (expression) {
                 case VariableExpression(String variableName) -> append(variableName);
                 case Literal(String literal, Class<?> clazz) -> {
@@ -387,7 +481,7 @@ public class JavaCode {
                         append(literal);
                         append("\"");
                     } else if (clazz.isEnum()) {
-                        format(clazz);
+                        format(QName.valueOf(clazz.getName()));
                         append(".");
                         append(literal);
                     } else {
@@ -422,7 +516,7 @@ public class JavaCode {
                         default -> append(paramList.stream().collect(Collectors.joining(", ", "(", ")")));
                     }
                     append(" -> ");
-                    format(expr);
+                    formatExpression(expr);
                 }
                 case FieldAssignment(ObjectTarget target, String fieldName, Expression valueExpression) -> {
                     if (target != null) {
@@ -431,7 +525,7 @@ public class JavaCode {
                     }
                     append(fieldName);
                     append(" = ");
-                    format(valueExpression);
+                    formatExpression(valueExpression);
                 }
             }
         }
@@ -442,7 +536,7 @@ public class JavaCode {
                     format(className);
                 }
                 case ExpressionTarget(Expression expr) -> {
-                    format(expr);
+                    formatExpression(expr);
                 }
             }
         }
@@ -455,12 +549,5 @@ public class JavaCode {
                 append(";\n");
             });
         }
-    }
-
-    public static Optional<QName> findVariableType(String variableName, List<Statement> statements) {
-        return statements.stream()
-            .filter(statement -> statement instanceof VariableDeclaration varDecl && variableName.equals(varDecl.variableName()))
-            .map(statement -> ((VariableDeclaration) statement).className())
-            .findFirst();
     }
 }

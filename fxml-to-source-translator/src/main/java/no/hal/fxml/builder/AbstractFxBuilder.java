@@ -27,7 +27,7 @@ public abstract class AbstractFxBuilder<N extends Node, C> {
         return root;
     }
 
-    private C controller;
+    protected C controller;
 
     // @Override public if FXML doesn't contain fx:controller attribute
     protected void setController(C controller) {
@@ -52,5 +52,5 @@ public abstract class AbstractFxBuilder<N extends Node, C> {
         return (T) getNamespace().get(id);
     }
 
-    public abstract N build();
+    protected abstract N build();
 }

@@ -29,7 +29,12 @@ public class ClassResolver {
         }
         Class<?> clazz = null;
         try {
-            clazz = classLoader.loadClass(typeName.packageName() + "." + typeName.className());
+            String className = typeName.className();
+            int pos = className.lastIndexOf('.');
+            if (pos >= 0) {
+                className = className.substring(0, pos) + "$" + className.substring(pos + 1);
+            }
+            clazz = classLoader.loadClass(typeName.packageName() + "." + className);
         } catch (ClassNotFoundException cnfe) {
             // ignore
         }
@@ -41,10 +46,10 @@ public class ClassResolver {
         if (classMap.containsKey(typeName)) {
             return classMap.get(typeName);
         }
+        String className = typeName.className();
         if (typeName.packageName() != null) {
             return loadClass(typeName);
         }
-        String className = typeName.className();
         Class<?> clazz = null;
         // try all non-wildcard imports
         for (var anImport : imports) {

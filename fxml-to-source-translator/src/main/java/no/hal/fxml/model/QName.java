@@ -6,6 +6,13 @@ import java.util.stream.Stream;
 
 public record QName(String packageName, String className) {
 
+    public QName {
+        int pos = (className != null ? className.indexOf('$') : -1);
+        if (pos >= 0) {
+            className = className.substring(0, pos) + "." + className.substring(pos + 1);
+        }
+    }
+
     public QName(String className) {
         this(null, className);
     }

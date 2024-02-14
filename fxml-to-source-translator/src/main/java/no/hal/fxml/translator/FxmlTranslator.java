@@ -1,7 +1,6 @@
 package no.hal.fxml.translator;
 
 import java.io.InputStream;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -10,7 +9,6 @@ import java.util.Map;
 import java.util.Optional;
 
 import javafx.event.Event;
-import javafx.fxml.FXML;
 import no.hal.fxml.model.FxmlCode.BeanElement;
 import no.hal.fxml.model.FxmlCode.BeanProperty;
 import no.hal.fxml.model.FxmlCode.Define;
@@ -36,7 +34,6 @@ import no.hal.fxml.model.JavaCode.ConstructorCall;
 import no.hal.fxml.model.JavaCode.ConstructorDeclaration;
 import no.hal.fxml.model.JavaCode.Expression;
 import no.hal.fxml.model.JavaCode.ExpressionTarget;
-import no.hal.fxml.model.JavaCode.FieldAssignment;
 import no.hal.fxml.model.JavaCode.Formatter;
 import no.hal.fxml.model.JavaCode.GetFxmlObjectCall;
 import no.hal.fxml.model.JavaCode.Imports;
@@ -70,15 +67,11 @@ public class FxmlTranslator {
     private Class<?> controllerClass;
 
     private List<Statement> builderStatements = new ArrayList<>();
-    private List<Statement> initializerStatements = new ArrayList<>();
     private Map<FxmlElement, Expression> expressions = new HashMap<>();
     private Map<String, List<Expression>> methodReferences = new HashMap<>();
 
     private void emitBuilderStatement(Statement statement) {
         builderStatements.add(statement);
-    }
-    private void emitInitializerStatement(Statement statement) {
-        initializerStatements.add(statement);
     }
 
     private Expression expressionFor(FxmlElement fxmlElement, Expression expression) {
@@ -118,13 +111,19 @@ public class FxmlTranslator {
         )));
         members.add(new MethodDeclaration("protected", "build", new TypeRef(translator.rootType), List.of(), translator.builderStatements));
         if (translator.controllerClass != null) {
-            translator.fxml2InitializerStatements();
-            members.add(new MethodDeclaration("protected", "initializeController", null, List.of(), translator.initializerStatements));
+            QName controllerClassName = QName.valueOf(translator.controllerClass.getName());
+            members.add(new MethodDeclaration("protected", "createController", new TypeRef(controllerClassName), null, List.of(
+                new Return(new ConstructorCall(controllerClassName))
+            )));
+            members.add(new MethodDeclaration("protected", "initializeController", null, null, List.of(
+                new MethodCall(new ConstructorCall(new QName(controllerClassName.packageName(), controllerClassName.className() + "Helper"), List.of(new MethodCall("this", "getNamespace"), new VariableExpression("this.controller"))),
+                    "initializeController")
+            )));
         }
         return new FxmlTranslation(
             new ClassDeclaration(
                 QName.valueOf("no.hal.fxml.translator.TestOutput"),
-                new TypeRef("no.hal.fxml.builder.AbstractFxBuilder",
+                new TypeRef("no.hal.fxml.builder.AbstractFxLoader",
                     TypeRef.valueOf("javafx.scene.layout.Pane"),
                     new TypeRef(fxmlDocument.controllerClassName() != null ? fxmlDocument.controllerClassName() : QName.valueOf("Object"))
                 ),
@@ -321,45 +320,20 @@ public class FxmlTranslator {
         }
         return new MethodCall(new ExpressionTarget("this.controller"), method.getName(), argList);
     }
-    
-    //
-
-    private void fxml2InitializerStatements() {
-        var fxmlAnnotatedMembers = reflectionHelper.findAnnotatedMembers(controllerClass, FXML.class);
-        for (var member : fxmlAnnotatedMembers.keySet()) {
-            switch (member) {
-                case Field field -> {
-                    var fieldAssignment = new FieldAssignment("this.controller", member.getName(), new GetFxmlObjectCall(member.getName()));
-                    emitInitializerStatement(fieldAssignment);
-                }
-                case Method method -> {
-                    String propertyName = reflectionHelper.propertyName("set", method.getName());
-                    if (idMap.containsKey(propertyName)) {
-                        var methodCall = new MethodCall("this.controller", member.getName(), new GetFxmlObjectCall(propertyName));
-                        emitInitializerStatement(methodCall);
-                    }
-                }
-                default -> {}
-            }
-        }
-        fxmlAnnotatedMembers.keySet().stream()
-            .filter(member -> member instanceof Method && "initialize".equals(member.getName()))
-            .forEach(method -> emitInitializerStatement(new MethodCall("controller", method.getName())));
-    }
 
     //
 
-    public static String toFxmlBuilderSource(FxmlTranslation translation) {
+    public static String toJavaSource(ClassDeclaration classDeclaration) {
         Imports imports = new Imports(Map.<String, QName>of());
         JavaCode.Formatter formatter = new Formatter(imports);
         formatter.append("""
             package %s;
 
-            """.formatted(translation.builderClass().className().packageName())
+            """.formatted(classDeclaration.className().packageName())
         );
 
-        String classDecl = formatter.format(translation, (f, t) -> {
-            f.format(t.builderClass());
+        String classDecl = formatter.format(classDeclaration, (f, cd) -> {
+            f.format(cd);
         });
         
         formatter.format(imports);

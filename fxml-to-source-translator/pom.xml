@@ -3,7 +3,7 @@
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <modelVersion>4.0.0</modelVersion>
   <groupId>no.hal.fxml</groupId>
-  <artifactId>fxml-to-source-translator-processor</artifactId>
+  <artifactId>fxml-to-source-translator</artifactId>
   <version>1.0.0-SNAPSHOT</version>
   <name>FXML to source translator</name>
 
@@ -76,6 +76,8 @@
             <compilerArgs>
               <arg>-parameters</arg>
               <arg>--enable-preview</arg>
+              <!-- Disable annotation processing for ourselves. -->
+              <arg>-proc:none</arg>
             </compilerArgs>
           </configuration>
         </plugin>

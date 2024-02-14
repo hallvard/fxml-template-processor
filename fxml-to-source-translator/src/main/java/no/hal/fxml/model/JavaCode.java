@@ -178,7 +178,7 @@ public class JavaCode {
         return expression.toString();
     } 
     public static <T> String list2String(List<T> items) {
-        return items.stream().map(Object::toString).collect(Collectors.joining(", "));
+        return items != null ? items.stream().map(Object::toString).collect(Collectors.joining(", ")) : "";
     }
 
     public record MethodCall(ObjectTarget target, String methodName, List<Expression> arguments)
@@ -450,7 +450,7 @@ public class JavaCode {
 
         public <T> void formatList(String prefix, List<T> items, String suffix, BiConsumer<Formatter, T> formatter) {
             append(prefix);
-            for (int i = 0; i < items.size(); i++) {
+            for (int i = 0; items != null && i < items.size(); i++) {
                 if (i > 0) {
                     append(", ");
                 }

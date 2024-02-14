@@ -6,9 +6,9 @@ import javafx.scene.shape.Rectangle;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.Pane;
 import java.util.Map;
-import no.hal.fxml.builder.AbstractFxBuilder;
+import no.hal.fxml.builder.AbstractFxLoader;
 
-public class TestOutput extends AbstractFxBuilder<Pane, FxmlTranslatorTest.Controller> {
+public class TestOutput extends AbstractFxLoader<Pane, FxmlTranslatorTest.Controller> {
 
    public TestOutput() {
       super();

@@ -5,14 +5,14 @@ import java.util.Map;
 
 import javafx.scene.Node;
 
-public abstract class AbstractFxBuilder<N extends Node, C> {
+public abstract class AbstractFxLoader<N extends Node, C> {
             
     private Map<String, Object> namespace = new HashMap<>();
     
-    public AbstractFxBuilder() {
+    public AbstractFxLoader() {
     }
 
-    public AbstractFxBuilder(Map<String, Object> mappings) {
+    public AbstractFxLoader(Map<String, Object> mappings) {
         namespace.putAll(mappings);
     }
 
@@ -28,11 +28,6 @@ public abstract class AbstractFxBuilder<N extends Node, C> {
     }
 
     protected C controller;
-
-    // @Override public if FXML doesn't contain fx:controller attribute
-    protected void setController(C controller) {
-        this.controller = controller;
-    }
 
     public C getController() {
         return controller;
@@ -52,5 +47,21 @@ public abstract class AbstractFxBuilder<N extends Node, C> {
         return (T) getNamespace().get(id);
     }
 
+    public N load() {
+        N node = build();
+        this.controller = createController();
+        if (this.controller != null) {
+            initializeController();
+        }
+        return node;
+    }
+
     protected abstract N build();
+
+    protected C createController() {
+        return null;
+    }
+
+    protected void initializeController() {
+    }
 }

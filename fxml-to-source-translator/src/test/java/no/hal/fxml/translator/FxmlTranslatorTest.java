@@ -44,13 +44,14 @@ public class FxmlTranslatorTest {
             ex.printStackTrace();
         } finally {
             System.out.println(
-                FxmlTranslator.toFxmlBuilderSource(actual)
+                FxmlTranslator.toJavaSource(actual.builderClass())
             );
         }
         testFxmlTranslator(actual.builderClass(), expectedBuilder);
     }
 
     public static class Controller {
+
         @FXML
         javafx.scene.paint.Color red;
     
@@ -89,7 +90,7 @@ public class FxmlTranslatorTest {
         testFxmlTranslator(FxmlParser.parseFxml(FXML_SAMPLE),
             new ClassDeclaration(
                 QName.valueOf("no.hal.fxml.translator.TestOutput"),
-                TypeRef.valueOf("no.hal.fxml.builder.AbstractFxBuilder<javafx.scene.layout.Pane, no.hal.fxml.translator.FxmlTranslatorTest$Controller>"),
+                TypeRef.valueOf("no.hal.fxml.builder.AbstractFxLoader<javafx.scene.layout.Pane, no.hal.fxml.translator.FxmlTranslatorTest$Controller>"),
                 null,
                 List.of(
                     new ConstructorDeclaration("public", "TestOutput", List.of()),
@@ -145,14 +146,13 @@ public class FxmlTranslatorTest {
                                 new Return(new VariableExpression("pane"))
                         )
                     ),
-                    new MethodDeclaration("protected", "initializeController", null, List.of(),
-                        List.<Statement>of(
-                            // controller.red = getFxmlObject("red")
-                            new FieldAssignment("this.controller", "red", new GetFxmlObjectCall("red")),
-                            // controller.setLabel1(getFxmlObject("label1"))
-                            new MethodCall("this.controller", "setLabel1", new GetFxmlObjectCall("label1"))
-                        )
-                    )
+                    new MethodDeclaration("protected", "createController", new TypeRef(new QName("no.hal.fxml.translator", "FxmlTranslatorTest.Controller")), null, List.of(
+                        new Return(new ConstructorCall(new QName("no.hal.fxml.translator", "FxmlTranslatorTest.Controller")))
+                    )),
+                    new MethodDeclaration("protected", "initializeController", null, null, List.of(
+                        new MethodCall(new ConstructorCall(new QName("no.hal.fxml.translator", "FxmlTranslatorTest.ControllerHelper"), List.of(new MethodCall("this", "getNamespace"), new VariableExpression("this.controller"))),
+                            "initializeController")
+                    ))
                 )
             )
        );

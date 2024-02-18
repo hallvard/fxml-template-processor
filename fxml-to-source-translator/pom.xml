@@ -90,5 +90,12 @@
         </plugin>
       </plugins>
     </pluginManagement>
+
+    <plugins>
+      <plugin>
+        <artifactId>maven-exec-plugin</artifactId>
+        <version>3.1.1</version>
+      </plugin>
+    </plugins>
   </build>
 </project>

@@ -78,8 +78,11 @@ public class JavaCode {
         permits VariableDeclaration, Return, ExecutableCall, FieldAssignment {
     }
 
-    public record VariableDeclaration(TypeRef typeName, String variableName, Expression expression)
+    public record VariableDeclaration(String modifiers, TypeRef typeName, String variableName, Expression expression)
         implements Statement, Member {
+        public VariableDeclaration(TypeRef typeName, String variableName, Expression expression) {
+            this(null, typeName, variableName, expression);
+        }
         public VariableDeclaration(QName typeName, String variableName, Expression expression) {
             this(new TypeRef(typeName), variableName, expression);
         }
@@ -91,10 +94,14 @@ public class JavaCode {
         }
         @Override
         public String toString() {
-            return (expression != null 
-                ? "%s %s = %s".formatted(typeName != null ? typeName : "var", variableName, expression)
-                :  "%s %s".formatted(typeName != null ? typeName : "var", variableName)
-            );
+            String s = "%s %s".formatted(typeName != null ? typeName : "var", variableName, expression);
+            if (modifiers != null) {
+                s = modifiers + " " + s;
+            }
+            if (expression != null) {
+                s = s + " = " + expression;               
+            }
+            return s;
         }
         @Override
         public String getName() {
@@ -113,7 +120,7 @@ public class JavaCode {
     }
 
     public sealed interface Expression
-        permits VariableExpression, Literal, ExecutableCall, LambdaExpression, FieldAssignment {
+        permits VariableExpression, Literal, ExecutableCall, LambdaExpression, LambdaMethodReference, FieldAssignment {
     }
 
     public record VariableExpression(String variableName)
@@ -143,6 +150,10 @@ public class JavaCode {
 
     public sealed interface ObjectTarget
         permits ClassTarget, ExpressionTarget {
+
+        public static ObjectTarget thisTarget() {
+            return new ExpressionTarget("this");
+        }
     }
 
     public record ClassTarget(QName className) implements ObjectTarget {
@@ -151,7 +162,7 @@ public class JavaCode {
         }
         @Override
         public String toString() {
-            return "%s.".formatted(className);
+            return "%s".formatted(className);
         }
     }
 
@@ -161,12 +172,13 @@ public class JavaCode {
         }
         @Override
         public String toString() {
-            return "%s.".formatted(expression);
+            return expression.toString();
         }
     }
 
     public sealed interface ExecutableCall extends Expression, Statement
-        permits MethodCall, GetFxmlObjectCall, SetFxmlObjectCall, ConstructorCall {
+        permits MethodCall, ConstructorCall {
+
         public List<Expression> arguments();
     }
 
@@ -184,13 +196,13 @@ public class JavaCode {
     public record MethodCall(ObjectTarget target, String methodName, List<Expression> arguments)
         implements ExecutableCall {
         public MethodCall(ObjectTarget target, String methodName, Expression singleArg) {
-            this(target, methodName, Collections.singletonList(singleArg));
+            this(target, methodName, singleArg != null ? Collections.singletonList(singleArg) : Collections.emptyList());
         }
-        public MethodCall(Expression expression, String methodName, Expression singleArg) {
-            this(new ExpressionTarget(expression), methodName, singleArg);
+        public MethodCall(Expression expression, String methodName, Expression singleArgOrNull) {
+            this(new ExpressionTarget(expression), methodName, singleArgOrNull);
         }
-        public MethodCall(String variableName, String methodName, Expression singleArg) {
-            this(new ExpressionTarget(variableName), methodName, singleArg);
+        public MethodCall(String variableName, String methodName, Expression singleArgOrNull) {
+            this(new ExpressionTarget(variableName), methodName, singleArgOrNull);
         }
         public MethodCall(ObjectTarget target, String methodName) {
             this(target, methodName, Collections.emptyList());
@@ -203,7 +215,8 @@ public class JavaCode {
         }
         @Override
         public String toString() {
-            return "%s%s(%s)".formatted(target != null ? target : "", methodName, JavaCode.list2String(arguments));
+            String targetPrefix = (target != null ? target + "." : "");
+            return "%s%s(%s)".formatted(targetPrefix, methodName, JavaCode.list2String(arguments));
         }
     }
 
@@ -218,25 +231,11 @@ public class JavaCode {
         }
     }
 
-    public record GetFxmlObjectCall(List<Expression> arguments) implements ExecutableCall {
-        public GetFxmlObjectCall(String id) {
-            this(List.of(Literal.string(id)));
-        }
+    public record LambdaMethodReference(ObjectTarget target, String methodName)
+        implements Expression {
         @Override
         public String toString() {
-            return "getFxmlObject(%s)".formatted(JavaCode.list2String(arguments));
-        }
-    }
-    public record SetFxmlObjectCall(List<Expression> arguments) implements ExecutableCall {
-        public SetFxmlObjectCall(String id, Expression expression) {
-            this(List.of(Literal.string(id), expression));
-        }
-        public SetFxmlObjectCall(String id, String variableName) {
-            this(List.of(Literal.string(id), new VariableExpression(variableName)));
-        }
-        @Override
-        public String toString() {
-            return "setFxmlObject(%s)".formatted(JavaCode.list2String(arguments));
+            return "%s::%s".formatted(target, methodName);
         }
     }
 
@@ -425,6 +424,10 @@ public class JavaCode {
         }
 
         public void format(VariableDeclaration varDecl) {
+            if (varDecl.modifiers() != null) {
+                append(varDecl.modifiers());
+                space();
+            }
             format(varDecl.typeName());
             space();
             append(varDecl.variableName());
@@ -487,14 +490,6 @@ public class JavaCode {
                     append(methodName);
                     formatArgumentList(arguments);
                 }
-                case GetFxmlObjectCall(List<Expression> arguments) -> {
-                    append("getFxmlObject");
-                    formatArgumentList(arguments);
-                }
-                case SetFxmlObjectCall(List<Expression> arguments) -> {
-                    append("setFxmlObject");
-                    formatArgumentList(arguments);
-                }
                 case ConstructorCall(QName className, List<Expression> arguments) -> {
                     append("new ");
                     format(className);
@@ -508,6 +503,11 @@ public class JavaCode {
                     }
                     append(" -> ");
                     formatExpression(expr);
+                }
+                case LambdaMethodReference(ObjectTarget target, String methodName) -> {
+                    format(target);
+                    append("::");
+                    append(methodName);
                 }
                 case FieldAssignment(ObjectTarget target, String fieldName, Expression valueExpression) -> {
                     if (target != null) {

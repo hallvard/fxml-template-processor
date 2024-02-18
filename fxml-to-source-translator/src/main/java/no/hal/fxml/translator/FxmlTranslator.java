@@ -1,14 +1,14 @@
 package no.hal.fxml.translator;
 
 import java.io.InputStream;
-import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import javafx.event.Event;
 import no.hal.fxml.model.FxmlCode.BeanElement;
 import no.hal.fxml.model.FxmlCode.BeanProperty;
 import no.hal.fxml.model.FxmlCode.Define;
@@ -34,17 +34,17 @@ import no.hal.fxml.model.JavaCode.ConstructorCall;
 import no.hal.fxml.model.JavaCode.ConstructorDeclaration;
 import no.hal.fxml.model.JavaCode.Expression;
 import no.hal.fxml.model.JavaCode.ExpressionTarget;
+import no.hal.fxml.model.JavaCode.FieldAssignment;
 import no.hal.fxml.model.JavaCode.Formatter;
-import no.hal.fxml.model.JavaCode.GetFxmlObjectCall;
 import no.hal.fxml.model.JavaCode.Imports;
 import no.hal.fxml.model.JavaCode.LambdaExpression;
+import no.hal.fxml.model.JavaCode.LambdaMethodReference;
 import no.hal.fxml.model.JavaCode.Literal;
 import no.hal.fxml.model.JavaCode.Member;
 import no.hal.fxml.model.JavaCode.MethodCall;
 import no.hal.fxml.model.JavaCode.MethodDeclaration;
 import no.hal.fxml.model.JavaCode.ObjectTarget;
 import no.hal.fxml.model.JavaCode.Return;
-import no.hal.fxml.model.JavaCode.SetFxmlObjectCall;
 import no.hal.fxml.model.JavaCode.Statement;
 import no.hal.fxml.model.JavaCode.VariableDeclaration;
 import no.hal.fxml.model.JavaCode.VariableExpression;
@@ -58,13 +58,12 @@ public class FxmlTranslator {
     private final ClassResolver classResolver;
     private final ReflectionHelper reflectionHelper;
 
-    public FxmlTranslator(Document fxmlDocument, ClassLoader classLoader) {
+    public FxmlTranslator(Document fxmlDocument, QName targetClassName, ClassLoader classLoader) {
         this.classResolver = new ClassResolver(classLoader, fxmlDocument.imports());
         this.reflectionHelper = new ReflectionHelper();
     }
 
     private QName rootType = null;
-    private Class<?> controllerClass;
 
     private List<Statement> builderStatements = new ArrayList<>();
     private Map<FxmlElement, Expression> expressions = new HashMap<>();
@@ -93,50 +92,50 @@ public class FxmlTranslator {
         return varNum == 0 ? baseName : baseName + varNum;
     }
 
-    public record FxmlTranslation(ClassDeclaration builderClass, Class<?> controllerClass) {
+    public record FxmlTranslation(ClassDeclaration builderClass) {
     }
 
-    public static FxmlTranslation translateFxml(Document fxmlDocument, ClassLoader classLoader) {
-        FxmlTranslator translator = new FxmlTranslator(fxmlDocument, classLoader);
-        if (fxmlDocument.controllerClassName() != null) {
-            translator.controllerClass = translator.classResolver.resolve(fxmlDocument.controllerClassName());
-        }
+    public static FxmlTranslation translateFxml(Document fxmlDocument, QName targetClassName, ClassLoader classLoader) {
+        FxmlTranslator translator = new FxmlTranslator(fxmlDocument, targetClassName, classLoader);
         FxmlElement rootElement = fxmlDocument.instanceElement();
         Expression rootExpression = translator.fxml2BuilderStatements(rootElement);
         translator.emitBuilderStatement(new Return(rootExpression));
         List<Member> members = new ArrayList<>();
-        members.add(new ConstructorDeclaration("public", "TestOutput", List.of()));
-        members.add(new ConstructorDeclaration("public", "TestOutput", List.of(
+        members.add(new ConstructorDeclaration("public", targetClassName.className(), List.of()));
+        members.add(new ConstructorDeclaration("public", targetClassName.className(), List.of(
             new VariableDeclaration(TypeRef.valueOf("java.util.Map<String, Object>"), "namespace", null)
         )));
         members.add(new MethodDeclaration("protected", "build", new TypeRef(translator.rootType), List.of(), translator.builderStatements));
-        if (translator.controllerClass != null) {
-            QName controllerClassName = QName.valueOf(translator.controllerClass.getName());
+        if (fxmlDocument.controllerClassName() != null) {
+            QName controllerClassName = fxmlDocument.controllerClassName();
             members.add(new MethodDeclaration("protected", "createController", new TypeRef(controllerClassName), null, List.of(
                 new Return(new ConstructorCall(controllerClassName))
             )));
+            QName controllerHelperClassName = new QName(controllerClassName.packageName(), controllerClassName.className() + "Helper");
+            members.add(new VariableDeclaration("private", new TypeRef(controllerHelperClassName), "controllerHelper", null));
             members.add(new MethodDeclaration("protected", "initializeController", null, null, List.of(
-                new MethodCall(new ConstructorCall(new QName(controllerClassName.packageName(), controllerClassName.className() + "Helper"), List.of(new MethodCall("this", "getNamespace"), new VariableExpression("this.controller"))),
-                    "initializeController")
+                new FieldAssignment(ObjectTarget.thisTarget(), "controllerHelper", new ConstructorCall(controllerHelperClassName, List.of(
+                    new MethodCall(ObjectTarget.thisTarget(), "getNamespace"),
+                    new VariableExpression("this.controller")
+                ))),
+                new MethodCall(new ExpressionTarget("this.controllerHelper"), "initializeController")
             )));
         }
         return new FxmlTranslation(
-            new ClassDeclaration(
-                QName.valueOf("no.hal.fxml.translator.TestOutput"),
-                new TypeRef("no.hal.fxml.builder.AbstractFxLoader",
+            new ClassDeclaration(targetClassName,
+                new TypeRef("no.hal.fxml.runtime.AbstractFxLoader",
                     TypeRef.valueOf("javafx.scene.layout.Pane"),
                     new TypeRef(fxmlDocument.controllerClassName() != null ? fxmlDocument.controllerClassName() : QName.valueOf("Object"))
                 ),
                 null,  members
-                ),
-            translator.controllerClass
+                )
         );
     }
-    public static FxmlTranslation translateFxml(String fxml, ClassLoader classLoader) throws Exception {
-        return translateFxml(FxmlParser.parseFxml(fxml), classLoader);
+    public static FxmlTranslation translateFxml(String fxml, QName targetClassName, ClassLoader classLoader) throws Exception {
+        return translateFxml(FxmlParser.parseFxml(fxml), targetClassName, classLoader);
     }
-    public static FxmlTranslation translateFxml(InputStream input, ClassLoader classLoader) throws Exception {
-        return translateFxml(FxmlParser.parseFxml(input), classLoader);
+    public static FxmlTranslation translateFxml(InputStream input, QName targetClassName, ClassLoader classLoader) throws Exception {
+        return translateFxml(FxmlParser.parseFxml(input), targetClassName, classLoader);
     }
 
     private Expression fxml2BuilderStatements(FxmlElement fxmlElement) {
@@ -209,10 +208,20 @@ public class FxmlTranslator {
                 translateBeanChildren(instantiationElement, remainingBeanChildren);
                 yield instanceExpression;
             }
-            case Reference reference -> new GetFxmlObjectCall(reference.source());
+            case Reference reference -> getFxmlObjectCall(reference.source());
             case Include include -> null;
             default -> null;
         };
+    }
+
+    static MethodCall getFxmlObjectCall(String id) {
+        return new MethodCall(ObjectTarget.thisTarget(), "getFxmlObject", Literal.string(id));
+    }
+    static MethodCall setFxmlObjectCall(String id, Expression expression) {
+        return new MethodCall(ObjectTarget.thisTarget(), "setFxmlObject", List.of(Literal.string(id), expression));
+    }
+    static MethodCall setFxmlObjectCall(String id, String variableName) {
+        return new MethodCall(ObjectTarget.thisTarget(), "setFxmlObject", List.of(Literal.string(id), new VariableExpression(variableName)));
     }
 
     private Map<String, Expression> idMap = new HashMap<>();
@@ -222,7 +231,7 @@ public class FxmlTranslator {
             var instantiationExpression = expressionFor(instantiationElement);
             var id = instantiationElement.id();
             idMap.put(id, instantiationExpression);
-            emitBuilderStatement(new SetFxmlObjectCall(id, instantiationExpression));
+            emitBuilderStatement(setFxmlObjectCall(id, instantiationExpression));
             var clazz = classResolver.resolve(instantiationElement.className());
             reflectionHelper.getSetter(clazz, "id").ifPresent(setter ->
                 emitBuilderStatement(new MethodCall(new ExpressionTarget(instantiationExpression), setter.getName(), Literal.string(id)))
@@ -294,31 +303,11 @@ public class FxmlTranslator {
     private Expression translateValueExpression(ValueExpression valueExpression, Class<?> targetClass) {
         return switch (valueExpression) {
             case ValueExpression.String(String value) -> new Literal(value, targetClass);
-            case ValueExpression.IdReference(String source) -> new GetFxmlObjectCall(source);
+            case ValueExpression.IdReference(String source) -> getFxmlObjectCall(source);
             case ValueExpression.Binding value -> throw new UnsupportedOperationException();
             case ValueExpression.Location value -> throw new UnsupportedOperationException();
-            case ValueExpression.MethodReference(String methodName) -> {
-                List<Expression> argList = new ArrayList<>();
-                // argList will be updated, according to argument list of controller method
-                methodReferences.put(methodName, argList);
-                yield new LambdaExpression("event", controllerEventMethodCall(methodName, "event"));
-            }
+            case ValueExpression.MethodReference(String methodName) -> new LambdaMethodReference(new ExpressionTarget("this.controllerHelper"), methodName);
         };
-    }
-
-    private Expression controllerEventMethodCall(String methodName, String eventArgName) {
-        Method method = reflectionHelper.getMethod(controllerClass, methodName, Event.class);
-        if (method == null) {
-            method = reflectionHelper.getMethod(controllerClass, methodName);
-        }
-        if (method == null) {
-            throw new IllegalStateException("No method in " + controllerClass + " for method reference #" + methodName);
-        }
-        List<Expression> argList = new ArrayList<>();
-        if (method.getParameterCount() == 1) {
-            argList.add(new VariableExpression(eventArgName));
-        }
-        return new MethodCall(new ExpressionTarget("this.controller"), method.getName(), argList);
     }
 
     //
@@ -343,23 +332,57 @@ public class FxmlTranslator {
         return formatter.toString();
     }
 
+    private static final String FXML_SAMPLE = """
+        <?import javafx.scene.control.*?>
+        <?import javafx.scene.layout.*?>
+        <?import javafx.scene.paint.*?>
+        <?import javafx.scene.shape.*?>
+        <Pane xmlns:fx="http://javafx.com/fxml">
+            <fx:define>
+                <String fx:id="prompt" fx:value="Enter answer"/>
+                <TextField fx:id="answerInput" promptText="$prompt"/>
+                <Color fx:id="red" red="1.0" green="0.0" blue="0.0" opacity="1.0"/>
+            </fx:define>
+           <Label fx:id="label1" text="Hi!"/>
+           <fx:reference source="answerInput"/>
+           <Rectangle x="0.0" y="0.0" width="100.0" height="100.0" fill="$red"/>
+        </Pane>
+        """;
+
     public static void main(String[] args) throws Exception {
-        var translation = FxmlTranslator.translateFxml("""
-            <?import javafx.scene.control.*?>
-            <?import javafx.scene.layout.*?>
-            <?import javafx.scene.paint.*?>
-            <?import javafx.scene.shape.*?>
-            <Pane xmlns:fx="http://javafx.com/fxml">
-                <fx:define>
-                    <String fx:id="prompt" fx:value="Enter answer"/>
-                    <TextField fx:id="answerInput" promptText="$prompt"/>
-                    <Color fx:id="red" red="1.0" green="0.0" blue="0.0" opacity="1.0"/>
-                </fx:define>
-               <Label fx:id="label1" text="Hi!"/>
-               <fx:reference source="answerInput"/>
-               <Rectangle x="0.0" y="0.0" width="100.0" height="100.0" fill="$red"/>
-            </Pane>
-            """, FxmlTranslator.class.getClassLoader());
-        System.out.println(translation.builderClass());
+        if (args.length == 0) {
+            Document fxmlDoc = FxmlParser.parseFxml(FXML_SAMPLE);
+            var translation = FxmlTranslator.translateFxml(fxmlDoc, QName.valueOf("no.hal.fxml.translator.TestOutput"), FxmlTranslator.class.getClassLoader());
+            System.out.println(FxmlTranslator.toJavaSource(translation.builderClass()));
+        } else {
+            Path source = Path.of(args[0]);
+            Path target = (args.length >= 2 ? Path.of(args[1]) : source);
+            if (Files.isDirectory(source)) {
+                Files.find(source, Integer.MAX_VALUE, (path, attributes) -> path.getFileName().toString().endsWith(".fxml"))
+                    .forEach(path -> {
+                        try {
+                            translateFile(source, path, target);
+                        } catch (Exception ex) {
+                            // ignore
+                        }
+                });
+            } else {
+                translateFile(Path.of("."), source, target);
+            }
+        }
+    }
+
+    public static void translateFile(Path root, Path path, Path outputFolder) throws Exception {
+        Document fxmlDoc = FxmlParser.parseFxml(path.toFile());
+        try {
+            QName className = QName.valueOf(root.relativize(path).toString().replace(".fxml", "Loader").replace('/', '.'));
+            var translation = FxmlTranslator.translateFxml(fxmlDoc, className, FxmlTranslator.class.getClassLoader());
+            var javaSource = FxmlTranslator.toJavaSource(translation.builderClass());
+            var javaPath = outputFolder.resolve(className.toString().replace(".", "/") + ".java");
+            Files.write(javaPath, javaSource.getBytes());
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
+        //System.out.println(javaSource);
     }
 }

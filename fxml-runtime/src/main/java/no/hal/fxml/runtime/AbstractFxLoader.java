@@ -1,4 +1,4 @@
-package no.hal.fxml.builder;
+package no.hal.fxml.runtime;
 
 import java.util.HashMap;
 import java.util.Map;

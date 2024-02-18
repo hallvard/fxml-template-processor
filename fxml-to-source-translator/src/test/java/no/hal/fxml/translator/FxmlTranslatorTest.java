@@ -12,15 +12,16 @@ import no.hal.fxml.model.JavaCode.ClassDeclaration;
 import no.hal.fxml.model.JavaCode.ClassTarget;
 import no.hal.fxml.model.JavaCode.ConstructorCall;
 import no.hal.fxml.model.JavaCode.ConstructorDeclaration;
+import no.hal.fxml.model.JavaCode.ExecutableCall;
 import no.hal.fxml.model.JavaCode.ExpressionTarget;
 import no.hal.fxml.model.JavaCode.FieldAssignment;
-import no.hal.fxml.model.JavaCode.GetFxmlObjectCall;
 import no.hal.fxml.model.JavaCode.LambdaExpression;
+import no.hal.fxml.model.JavaCode.LambdaMethodReference;
 import no.hal.fxml.model.JavaCode.Literal;
 import no.hal.fxml.model.JavaCode.MethodCall;
 import no.hal.fxml.model.JavaCode.MethodDeclaration;
+import no.hal.fxml.model.JavaCode.ObjectTarget;
 import no.hal.fxml.model.JavaCode.Return;
-import no.hal.fxml.model.JavaCode.SetFxmlObjectCall;
 import no.hal.fxml.model.JavaCode.Statement;
 import no.hal.fxml.model.JavaCode.VariableDeclaration;
 import no.hal.fxml.model.JavaCode.VariableExpression;
@@ -36,10 +37,12 @@ public class FxmlTranslatorTest {
         );
     }
 
+    private QName className = QName.valueOf("no.hal.fxml.translator.TestOutput");
+
     private void testFxmlTranslator(Document fxmlDoc, ClassDeclaration expectedBuilder) throws Exception {
         FxmlTranslator.FxmlTranslation actual = null;
         try {
-            actual = FxmlTranslator.translateFxml(fxmlDoc, getClass().getClassLoader());
+            actual = FxmlTranslator.translateFxml(fxmlDoc, className, getClass().getClassLoader());
         } catch(Exception ex) {
             ex.printStackTrace();
         } finally {
@@ -89,12 +92,12 @@ public class FxmlTranslatorTest {
     public void testFxmlTranslator() throws Exception {
         testFxmlTranslator(FxmlParser.parseFxml(FXML_SAMPLE),
             new ClassDeclaration(
-                QName.valueOf("no.hal.fxml.translator.TestOutput"),
-                TypeRef.valueOf("no.hal.fxml.builder.AbstractFxLoader<javafx.scene.layout.Pane, no.hal.fxml.translator.FxmlTranslatorTest$Controller>"),
+                className,
+                TypeRef.valueOf("no.hal.fxml.runtime.AbstractFxLoader<javafx.scene.layout.Pane, no.hal.fxml.translator.FxmlTranslatorTest$Controller>"),
                 null,
                 List.of(
-                    new ConstructorDeclaration("public", "TestOutput", List.of()),
-                    new ConstructorDeclaration("public", "TestOutput", List.of(
+                    new ConstructorDeclaration("public", className.className(), List.of()),
+                    new ConstructorDeclaration("public", className.className(), List.of(
                         new VariableDeclaration(TypeRef.valueOf("java.util.Map<String, Object>"), "namespace", null)
                     )),
                     new MethodDeclaration("protected", "build", TypeRef.valueOf("javafx.scene.layout.Pane"), List.of(),
@@ -105,18 +108,18 @@ public class FxmlTranslatorTest {
                                 new VariableDeclaration("java.lang.String", "string",
                                     new MethodCall(new ClassTarget("java.lang.String"), "valueOf", List.of(Literal.string("Enter answer")))
                                 ),
-                                    new SetFxmlObjectCall("prompt", "string"),
+                                    FxmlTranslator.setFxmlObjectCall("prompt", "string"),
                                 // TextField textField = new TextField()
                                 VariableDeclaration.instantiation("javafx.scene.control.TextField", "textField"),
-                                    new SetFxmlObjectCall("answerInput", "textField"),
+                                FxmlTranslator.setFxmlObjectCall("answerInput", "textField"),
                                     // textField.setId("answerInput")
                                     new MethodCall("textField", "setId", Literal.string("answerInput")),
                                     // textField.setOnAction((event) -> hash_onAnswerInput(event))
                                     new MethodCall("textField", "setOnAction",
-                                        new LambdaExpression("event", new MethodCall(new ExpressionTarget("this.controller"), "onAnswerInput", new VariableExpression("event")))
+                                        new LambdaMethodReference(new ExpressionTarget("this.controllerHelper"), "onAnswerInput")
                                     ),
                                     // textField.setText(getFxmlObject("prompt"))
-                                    new MethodCall("textField", "setPromptText", new GetFxmlObjectCall("prompt")),
+                                    new MethodCall("textField", "setPromptText", FxmlTranslator.getFxmlObjectCall("prompt")),
                                 // Color color = new Color(1.0, 0.0, 0.0, 1.0)
                                 new VariableDeclaration("javafx.scene.paint.Color", "color",
                                     new ConstructorCall(QName.valueOf("javafx.scene.paint.Color"), List.of(
@@ -126,10 +129,10 @@ public class FxmlTranslatorTest {
                                         new Literal("1", Double.TYPE)
                                     ))
                                 ),
-                                new SetFxmlObjectCall("red", "color"),
+                                FxmlTranslator.setFxmlObjectCall("red", "color"),
                                 // Label label = new Label()
                                 VariableDeclaration.instantiation("javafx.scene.control.Label", "label"),
-                                    new SetFxmlObjectCall("label1", "label"),
+                                FxmlTranslator.setFxmlObjectCall("label1", "label"),
                                     // label.setId("label1")
                                     new MethodCall("label", "setId", Literal.string("label1")),
                                     // label.setText("Hi!")
@@ -137,10 +140,10 @@ public class FxmlTranslatorTest {
                                     // pane.getChildren().add(label)
                                     new MethodCall(new MethodCall("pane", "getChildren"), "add", new VariableExpression("label")),
                                     // pane.getChildren().add(getFxmlObject("answerInput"))
-                                    new MethodCall(new MethodCall("pane", "getChildren"), "add", new GetFxmlObjectCall("answerInput")),
+                                    new MethodCall(new MethodCall("pane", "getChildren"), "add", FxmlTranslator.getFxmlObjectCall("answerInput")),
                                 VariableDeclaration.instantiation("javafx.scene.shape.Rectangle", "rectangle"),
                                     // rectangle.setFill(red)
-                                    new MethodCall("rectangle", "setFill", new GetFxmlObjectCall("red")),
+                                    new MethodCall("rectangle", "setFill", FxmlTranslator.getFxmlObjectCall("red")),
                                     // pane.getChildren().add(rectangle)
                                     new MethodCall(new MethodCall("pane", "getChildren"), "add", new VariableExpression("rectangle")),
                                 new Return(new VariableExpression("pane"))
@@ -149,13 +152,16 @@ public class FxmlTranslatorTest {
                     new MethodDeclaration("protected", "createController", new TypeRef(new QName("no.hal.fxml.translator", "FxmlTranslatorTest.Controller")), null, List.of(
                         new Return(new ConstructorCall(new QName("no.hal.fxml.translator", "FxmlTranslatorTest.Controller")))
                     )),
+                    new VariableDeclaration("private", new TypeRef(new QName("no.hal.fxml.translator", "FxmlTranslatorTest.ControllerHelper")), "controllerHelper", null),
                     new MethodDeclaration("protected", "initializeController", null, null, List.of(
-                        new MethodCall(new ConstructorCall(new QName("no.hal.fxml.translator", "FxmlTranslatorTest.ControllerHelper"), List.of(new MethodCall("this", "getNamespace"), new VariableExpression("this.controller"))),
-                            "initializeController")
+                        new FieldAssignment(ObjectTarget.thisTarget(), "controllerHelper", new ConstructorCall(new QName("no.hal.fxml.translator", "FxmlTranslatorTest.ControllerHelper"), List.of(
+                            new MethodCall(ObjectTarget.thisTarget(), "getNamespace"),
+                            new VariableExpression("this.controller"))
+                        )),
+                        new MethodCall(new ExpressionTarget("this.controllerHelper"), "initializeController")
                     ))
-                )
             )
-       );
+       ));
     }
 }
 

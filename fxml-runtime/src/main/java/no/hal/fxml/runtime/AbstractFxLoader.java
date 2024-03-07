@@ -5,7 +5,7 @@ import java.util.Map;
 
 import javafx.scene.Node;
 
-public abstract class AbstractFxLoader<N extends Node, C> {
+public abstract class AbstractFxLoader<N extends Node, C> implements FxLoader<N, C> {
             
     private Map<String, Object> namespace = new HashMap<>();
     
@@ -23,32 +23,28 @@ public abstract class AbstractFxLoader<N extends Node, C> {
         this.root = root;
     }
 
+    @Override
     public N getRoot() {
         return root;
     }
 
     protected C controller;
 
+    @Override
     public C getController() {
         return controller;
     }
 
     //
 
+    @Override
     public Map<String, Object> getNamespace() {
         return namespace;
     }
 
-    public void setFxmlObject(String id, Object fxmlObject) {
-        getNamespace().put(id, fxmlObject);
-    }
-
-    public <T> T getFxmlObject(String id) {
-        return (T) getNamespace().get(id);
-    }
-
-    public N load() {
-        N node = build();
+    @Override
+    public N load(FxLoaderContext fxLoaderContext) {
+        N node = build(fxLoaderContext);
         this.controller = createController();
         if (this.controller != null) {
             initializeController();
@@ -56,7 +52,7 @@ public abstract class AbstractFxLoader<N extends Node, C> {
         return node;
     }
 
-    protected abstract N build();
+    protected abstract N build(FxLoaderContext fxLoaderContext);
 
     protected C createController() {
         return null;

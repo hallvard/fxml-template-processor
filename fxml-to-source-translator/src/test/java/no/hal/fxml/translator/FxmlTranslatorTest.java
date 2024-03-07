@@ -12,10 +12,8 @@ import no.hal.fxml.model.JavaCode.ClassDeclaration;
 import no.hal.fxml.model.JavaCode.ClassTarget;
 import no.hal.fxml.model.JavaCode.ConstructorCall;
 import no.hal.fxml.model.JavaCode.ConstructorDeclaration;
-import no.hal.fxml.model.JavaCode.ExecutableCall;
 import no.hal.fxml.model.JavaCode.ExpressionTarget;
 import no.hal.fxml.model.JavaCode.FieldAssignment;
-import no.hal.fxml.model.JavaCode.LambdaExpression;
 import no.hal.fxml.model.JavaCode.LambdaMethodReference;
 import no.hal.fxml.model.JavaCode.Literal;
 import no.hal.fxml.model.JavaCode.MethodCall;
@@ -25,6 +23,7 @@ import no.hal.fxml.model.JavaCode.Return;
 import no.hal.fxml.model.JavaCode.Statement;
 import no.hal.fxml.model.JavaCode.VariableDeclaration;
 import no.hal.fxml.model.JavaCode.VariableExpression;
+import no.hal.fxml.model.JavaCode;
 import no.hal.fxml.model.QName;
 import no.hal.fxml.model.TypeRef;
 import no.hal.fxml.parser.FxmlParser;
@@ -40,17 +39,18 @@ public class FxmlTranslatorTest {
     private QName className = QName.valueOf("no.hal.fxml.translator.TestOutput");
 
     private void testFxmlTranslator(Document fxmlDoc, ClassDeclaration expectedBuilder) throws Exception {
-        FxmlTranslator.FxmlTranslation actual = null;
+        ClassDeclaration actual = null;
         try {
-            actual = FxmlTranslator.translateFxml(fxmlDoc, className, getClass().getClassLoader());
+            FxmlTranslator.Config config = new FxmlTranslator.Config(false, true, false);
+            actual = FxmlTranslator.translateFxml(fxmlDoc, className, getClass().getClassLoader(), config);
         } catch(Exception ex) {
             ex.printStackTrace();
         } finally {
             System.out.println(
-                FxmlTranslator.toJavaSource(actual.builderClass())
+                JavaCode.toJavaSource(actual)
             );
         }
-        testFxmlTranslator(actual.builderClass(), expectedBuilder);
+        testFxmlTranslator(actual, expectedBuilder);
     }
 
     public static class Controller {
@@ -99,8 +99,10 @@ public class FxmlTranslatorTest {
                     new ConstructorDeclaration("public", className.className(), List.of()),
                     new ConstructorDeclaration("public", className.className(), List.of(
                         new VariableDeclaration(TypeRef.valueOf("java.util.Map<String, Object>"), "namespace", null)
-                    )),
-                    new MethodDeclaration("protected", "build", TypeRef.valueOf("javafx.scene.layout.Pane"), List.of(),
+                        )),
+                        new MethodDeclaration("protected", "build", TypeRef.valueOf("javafx.scene.layout.Pane"), List.of(
+                            VariableDeclaration.parameter(TypeRef.valueOf("no.hal.fxml.runtime.FxLoaderContext"), "fxLoaderContext")
+                        ),
                         List.<Statement>of(
                             // Pane pane = new Pane()
                             VariableDeclaration.instantiation("javafx.scene.layout.Pane", "pane"),

@@ -33,6 +33,7 @@ import no.hal.fxml.model.JavaCode.ObjectTarget;
 import no.hal.fxml.model.JavaCode.Statement;
 import no.hal.fxml.model.JavaCode.VariableDeclaration;
 import no.hal.fxml.model.JavaCode.VariableExpression;
+import no.hal.fxml.model.JavaCode;
 import no.hal.fxml.model.QName;
 import no.hal.fxml.model.TypeRef;
 
@@ -66,7 +67,7 @@ public class FxmlProcessor extends AbstractProcessor {
             .map(this::generateControllerHelper)
             .forEach(classDeclaration -> {
                 try (PrintWriter out = new PrintWriter(processingEnv.getFiler().createSourceFile(classDeclaration.className().toString()).openWriter())) {
-                    out.write(FxmlTranslator.toJavaSource(classDeclaration));
+                    out.write(JavaCode.toJavaSource(classDeclaration));
                 } catch (IOException ioex) {
                     System.err.println("Exception writing " + classDeclaration.className() + ": " + ioex);
                 }
@@ -79,8 +80,8 @@ public class FxmlProcessor extends AbstractProcessor {
         String helperClassName = controllerClassName.className() + "Helper";
         List<Member> members = new ArrayList<>();
         members.add(new ConstructorDeclaration("public", helperClassName, List.of(
-            new VariableDeclaration(TypeRef.valueOf("java.util.Map<String, Object>"), "namespace", null),
-            new VariableDeclaration(controllerClassName, "controller", null)
+            VariableDeclaration.parameter(TypeRef.valueOf("java.util.Map<String, Object>"), "namespace"),
+            VariableDeclaration.parameter(new TypeRef(controllerClassName), "controller")
         ), null));
         members.add(generateInitializeMethod(typeElementAnnotations));
         members.addAll(generateEventHandlers(typeElementAnnotations));
@@ -129,7 +130,7 @@ public class FxmlProcessor extends AbstractProcessor {
         List<MethodDeclaration> eventHandlers = new ArrayList<>();
         for (var member : typeElementAnnotations.getValue()) {
             var name = member.getSimpleName().toString();
-            if (member.getKind() == ElementKind.METHOD && propertyName("set", name) == null) {
+            if (member.getKind() == ElementKind.METHOD && (! "initialize".equals(name)) && propertyName("set", name) == null) {
                 if (member.asType() instanceof ExecutableType execType) {
                     var params = execType.getParameterTypes();
                     if (params.size() > 1) {

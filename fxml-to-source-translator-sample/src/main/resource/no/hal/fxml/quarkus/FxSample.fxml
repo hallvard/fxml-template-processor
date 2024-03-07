@@ -10,5 +10,5 @@
 <AnchorPane xmlns:fx="http://javafx.com/fxml" id="AnchorPane" prefHeight="188.0" prefWidth="406.0" fx:controller="no.hal.fxml.quarkus.FxSampleController">
     <TextField layoutX="14.0" layoutY="14.0" prefWidth="200.0" fx:id="txtName" onAction="#updateMessage1"/>
     <Button layoutX="226.0" layoutY="15.0" mnemonicParsing="false" onAction="#updateMessage2" text="Click!"/>
-    <Label fx:id="lblMessage" layoutX="14.0" layoutY="44.0" prefHeight="21.0" prefWidth="264.0" text="Type your name and click!"/>
+    <fx:include fx:id="lblMessage" source="FxSampleIncluded.fxml"/>
 </AnchorPane>

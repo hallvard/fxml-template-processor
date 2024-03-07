@@ -7,6 +7,7 @@ public class FxmlCode {
 
     // all elements
     public interface FxmlElement {
+        String toShortString();
     }
 
     public interface FxmlParent<C extends FxmlElement> {
@@ -33,6 +34,10 @@ public class FxmlCode {
     // <fx:root type="javafx.scene.layout.VBox" xmlns:fx="http://javafx.com/fxml">
     public record Root(QName typeName, List<FxmlElement> children) implements BeanElement {
         @Override
+        public String toShortString() {
+            return "<fx:root type=\"%s\">".formatted(typeName);
+        }
+        @Override
         public QName beanType() {
             return typeName;
         }
@@ -40,6 +45,10 @@ public class FxmlCode {
 
     // <fx:define>
     public record Define(List<InstantiationElement> children) implements FxmlElement, FxmlParent<InstantiationElement> {
+        @Override
+        public String toShortString() {
+            return "<fx:define>";
+        }
     }
 
     // elements that create a new instance
@@ -49,17 +58,27 @@ public class FxmlCode {
             this(className, instantiation, id, Collections.emptyList());
         }
         @Override
+        public String toShortString() {
+            return id != null ? "<%s fx:id=\"%s\">".formatted(className.className(), id) : "<%s>".formatted(className.className());
+        }
+        @Override
         public QName beanType() {
             return className;
         }
     }
 
-    // <fx:reference source="element1"/>
     public record Reference(String source) implements InstanceElement {
+        @Override
+        public String toShortString() {
+            return "<fx:reference source=\"%s\"/>".formatted(source);
+        }
     }
 
-    // <fx:include source="other.fxml"/>
-    public record Include(String source) implements InstanceElement {
+    public record Include(String id, String source) implements InstanceElement {
+        @Override
+        public String toShortString() {
+            return "<fx:include source=\"%s\"/>".formatted(source);
+        }
     }
 
     // bean property, sets a property given a class and property name
@@ -75,16 +94,28 @@ public class FxmlCode {
         public PropertyElement(String propertyName, InstanceElement instanceElement) {
             this(propertyName, List.of(instanceElement));
         }
+        @Override
+        public String toShortString() {
+            return "<%s>".formatted(propertyName);
+        }
     }
 
     // text="My Label"
     // <text>Hello, World!</text>
     public record PropertyValue(String propertyName, ValueExpression value)
         implements BeanProperty {
-    }
+            @Override
+            public String toShortString() {
+                return "%s=\"%s\"".formatted(propertyName, value.toShortString());
+            }
+        }
 
     // <GridPane.rowIndex>0</GridPane.rowIndex>
     public record StaticProperty(String className, String propertyName, ValueExpression value)
         implements BeanProperty {
+        @Override
+        public String toShortString() {
+            return "<%s.%s>%s<%s.%s>".formatted(className, propertyName, value.toShortString(), className, propertyName);
+        }
     }
 }

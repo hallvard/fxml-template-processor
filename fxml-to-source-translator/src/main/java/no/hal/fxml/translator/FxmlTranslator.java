@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import javafx.scene.Node;
 import no.hal.fxml.model.FxmlCode.BeanElement;
 import no.hal.fxml.model.FxmlCode.BeanProperty;
 import no.hal.fxml.model.FxmlCode.Define;
@@ -28,15 +29,15 @@ import no.hal.fxml.model.Instantiation.Constructor;
 import no.hal.fxml.model.Instantiation.Factory;
 import no.hal.fxml.model.Instantiation.Value;
 import no.hal.fxml.model.JavaCode;
+import no.hal.fxml.model.JavaCode.Cast;
 import no.hal.fxml.model.JavaCode.ClassDeclaration;
 import no.hal.fxml.model.JavaCode.ClassTarget;
+import no.hal.fxml.model.JavaCode.Comment;
 import no.hal.fxml.model.JavaCode.ConstructorCall;
 import no.hal.fxml.model.JavaCode.ConstructorDeclaration;
 import no.hal.fxml.model.JavaCode.Expression;
 import no.hal.fxml.model.JavaCode.ExpressionTarget;
 import no.hal.fxml.model.JavaCode.FieldAssignment;
-import no.hal.fxml.model.JavaCode.Formatter;
-import no.hal.fxml.model.JavaCode.Imports;
 import no.hal.fxml.model.JavaCode.LambdaExpression;
 import no.hal.fxml.model.JavaCode.LambdaMethodReference;
 import no.hal.fxml.model.JavaCode.Literal;
@@ -52,13 +53,29 @@ import no.hal.fxml.model.QName;
 import no.hal.fxml.model.TypeRef;
 import no.hal.fxml.model.ValueExpression;
 import no.hal.fxml.parser.FxmlParser;
+import no.hal.fxml.runtime.AbstractFxLoader;
+import no.hal.fxml.runtime.FxLoader;
+import no.hal.fxml.runtime.FxLoaderContext;
 
 public class FxmlTranslator {
     
+    public record Config(
+        boolean includeCommentFxml,
+        boolean useMethodReferences,
+        boolean useCastObject
+    ) {
+        public Config() {
+            this(true, true, false);
+        }
+    }
+
+    private Config config;
+
     private final ClassResolver classResolver;
     private final ReflectionHelper reflectionHelper;
 
-    public FxmlTranslator(Document fxmlDocument, QName targetClassName, ClassLoader classLoader) {
+    public FxmlTranslator(Document fxmlDocument, QName targetClassName, ClassLoader classLoader, Config config) {
+        this.config = config;
         this.classResolver = new ClassResolver(classLoader, fxmlDocument.imports());
         this.reflectionHelper = new ReflectionHelper();
     }
@@ -67,7 +84,6 @@ public class FxmlTranslator {
 
     private List<Statement> builderStatements = new ArrayList<>();
     private Map<FxmlElement, Expression> expressions = new HashMap<>();
-    private Map<String, List<Expression>> methodReferences = new HashMap<>();
 
     private void emitBuilderStatement(Statement statement) {
         builderStatements.add(statement);
@@ -92,20 +108,22 @@ public class FxmlTranslator {
         return varNum == 0 ? baseName : baseName + varNum;
     }
 
-    public record FxmlTranslation(ClassDeclaration builderClass) {
-    }
+    private static final String FX_LOADER_CONTEXT_VARIABLE = "fxLoaderContext";
 
-    public static FxmlTranslation translateFxml(Document fxmlDocument, QName targetClassName, ClassLoader classLoader) {
-        FxmlTranslator translator = new FxmlTranslator(fxmlDocument, targetClassName, classLoader);
+    public static ClassDeclaration translateFxml(Document fxmlDocument, QName targetClassName, ClassLoader classLoader, Config config) {
+        FxmlTranslator translator = new FxmlTranslator(fxmlDocument, targetClassName, classLoader, config);
         FxmlElement rootElement = fxmlDocument.instanceElement();
         Expression rootExpression = translator.fxml2BuilderStatements(rootElement);
         translator.emitBuilderStatement(new Return(rootExpression));
         List<Member> members = new ArrayList<>();
         members.add(new ConstructorDeclaration("public", targetClassName.className(), List.of()));
         members.add(new ConstructorDeclaration("public", targetClassName.className(), List.of(
-            new VariableDeclaration(TypeRef.valueOf("java.util.Map<String, Object>"), "namespace", null)
+            VariableDeclaration.parameter(TypeRef.valueOf("java.util.Map<String, Object>"), "namespace")
         )));
-        members.add(new MethodDeclaration("protected", "build", new TypeRef(translator.rootType), List.of(), translator.builderStatements));
+        members.add(new MethodDeclaration("protected", "build", new TypeRef(translator.rootType), List.of(
+                VariableDeclaration.parameter(TypeRef.of(FxLoaderContext.class), FX_LOADER_CONTEXT_VARIABLE)
+            ), translator.builderStatements)
+        );
         if (fxmlDocument.controllerClassName() != null) {
             QName controllerClassName = fxmlDocument.controllerClassName();
             members.add(new MethodDeclaration("protected", "createController", new TypeRef(controllerClassName), null, List.of(
@@ -116,29 +134,30 @@ public class FxmlTranslator {
             members.add(new MethodDeclaration("protected", "initializeController", null, null, List.of(
                 new FieldAssignment(ObjectTarget.thisTarget(), "controllerHelper", new ConstructorCall(controllerHelperClassName, List.of(
                     new MethodCall(ObjectTarget.thisTarget(), "getNamespace"),
-                    new VariableExpression("this.controller")
+                    castObject(new TypeRef(controllerClassName), new VariableExpression("this.controller"), config)
                 ))),
                 new MethodCall(new ExpressionTarget("this.controllerHelper"), "initializeController")
             )));
         }
-        return new FxmlTranslation(
-            new ClassDeclaration(targetClassName,
-                new TypeRef("no.hal.fxml.runtime.AbstractFxLoader",
-                    TypeRef.valueOf("javafx.scene.layout.Pane"),
-                    new TypeRef(fxmlDocument.controllerClassName() != null ? fxmlDocument.controllerClassName() : QName.valueOf("Object"))
+        return new ClassDeclaration(targetClassName,
+                new TypeRef(QName.of(AbstractFxLoader.class),
+                    translator.rootType != null ? new TypeRef(translator.rootType) : TypeRef.of(Node.class),
+                    new TypeRef(fxmlDocument.controllerClassName() != null ? fxmlDocument.controllerClassName() : QName.of(Object.class))
                 ),
                 null,  members
-                )
         );
     }
-    public static FxmlTranslation translateFxml(String fxml, QName targetClassName, ClassLoader classLoader) throws Exception {
-        return translateFxml(FxmlParser.parseFxml(fxml), targetClassName, classLoader);
+    public static ClassDeclaration translateFxml(String fxml, QName targetClassName, ClassLoader classLoader, Config config) throws Exception {
+        return translateFxml(FxmlParser.parseFxml(fxml), targetClassName, classLoader, config);
     }
-    public static FxmlTranslation translateFxml(InputStream input, QName targetClassName, ClassLoader classLoader) throws Exception {
-        return translateFxml(FxmlParser.parseFxml(input), targetClassName, classLoader);
+    public static ClassDeclaration translateFxml(InputStream input, QName targetClassName, ClassLoader classLoader, Config config) throws Exception {
+        return translateFxml(FxmlParser.parseFxml(input), targetClassName, classLoader, config);
     }
 
     private Expression fxml2BuilderStatements(FxmlElement fxmlElement) {
+        if (config.includeCommentFxml) {
+            emitBuilderStatement(Comment.line(fxmlElement.toShortString()));
+        }
         return switch (fxmlElement) {
             case Define define -> {
                 define.children().forEach(this::fxml2BuilderStatements);
@@ -147,7 +166,7 @@ public class FxmlTranslator {
             case Root root -> {
                 if (this.rootType == null) {
                     var rootClass = classResolver.resolve(root.typeName());
-                    this.rootType = QName.valueOf(rootClass.getName());
+                    this.rootType = QName.of(rootClass);
                 }
                 var rootVariable = gensym("root");
                 emitBuilderStatement(new VariableDeclaration(root.typeName(), rootVariable, new VariableExpression("_fxmlLoader.getRoot()")));
@@ -158,7 +177,7 @@ public class FxmlTranslator {
             case InstantiationElement instantiationElement -> {
                 var instanceClass = classResolver.resolve(instantiationElement.className());
                 if (this.rootType == null) {
-                    this.rootType = QName.valueOf(instanceClass.getName());
+                    this.rootType = QName.of(instanceClass);
                 }
                 var instantiationExpression = translateInstantiation(instanceClass, instantiationElement.instantiation());
                 var remainingBeanChildren = new ArrayList<>(instantiationElement.children());
@@ -193,7 +212,7 @@ public class FxmlTranslator {
                             missingProperties.removeAll(argExpressions.keySet());
                             throw new IllegalArgumentException("Missing properties: " + missingProperties);
                         }
-                        instantiationExpression = new ConstructorCall(QName.valueOf(instanceClass.getName()), argNames.stream().map(argExpressions::get).toList());
+                        instantiationExpression = new ConstructorCall(QName.of(instanceClass), argNames.stream().map(argExpressions::get).toList());
                     }
                     // how to support other JavaFXBuilderFactory logic???
                 }
@@ -209,7 +228,17 @@ public class FxmlTranslator {
                 yield instanceExpression;
             }
             case Reference reference -> getFxmlObjectCall(reference.source());
-            case Include include -> null;
+
+            case Include(String id, String source) -> {
+                var loaderVar = gensym("fxIncludeLoader");
+                emitBuilderStatement(new VariableDeclaration(TypeRef.of(FxLoader.class, null, null), loaderVar, new MethodCall(FX_LOADER_CONTEXT_VARIABLE, "loadFxml", Literal.string(source))));
+                var rootVar = gensym("fxIncludeRoot");
+                emitBuilderStatement(new VariableDeclaration(TypeRef.of(Node.class), rootVar, new MethodCall(loaderVar, "getRoot")));
+                var rootVarExpression = new VariableExpression(rootVar);
+                emitBuilderStatement(setFxmlObjectCall(id, rootVarExpression));
+                emitBuilderStatement(setFxmlObjectCall(id + "Controller", new MethodCall(loaderVar, "getController")));
+                yield rootVarExpression;
+            }
             default -> null;
         };
     }
@@ -240,7 +269,7 @@ public class FxmlTranslator {
     }
 
     private Expression translateInstantiation(Class<?> clazz, Instantiation instantiation) {
-        QName resolvedClassName = QName.valueOf(clazz.getName());
+        QName resolvedClassName = QName.of(clazz);
         return switch (instantiation) {
             case Constructor _ when reflectionHelper.getNoArgsConstructor(clazz).isPresent() -> new ConstructorCall(resolvedClassName);
             case Constructor _ -> null;
@@ -300,37 +329,30 @@ public class FxmlTranslator {
         };
     }
 
+    private static Expression castObject(TypeRef type, Expression expr, Config config) {
+        return config.useCastObject ? new Cast(type, expr) : expr;
+    }
+    private Expression castObject(TypeRef type, Expression expr) {
+        return FxmlTranslator.castObject(type, expr, config);
+    }
+
     private Expression translateValueExpression(ValueExpression valueExpression, Class<?> targetClass) {
         return switch (valueExpression) {
             case ValueExpression.String(String value) -> new Literal(value, targetClass);
-            case ValueExpression.IdReference(String source) -> getFxmlObjectCall(source);
+            case ValueExpression.IdReference(String source) -> castObject(TypeRef.of(targetClass), getFxmlObjectCall(source));
             case ValueExpression.Binding value -> throw new UnsupportedOperationException();
             case ValueExpression.Location value -> throw new UnsupportedOperationException();
-            case ValueExpression.MethodReference(String methodName) -> new LambdaMethodReference(new ExpressionTarget("this.controllerHelper"), methodName);
+            case ValueExpression.MethodReference(String methodName) -> {
+                var target = new ExpressionTarget("this.controllerHelper");
+                yield config.useMethodReferences()
+                ? new LambdaMethodReference(target, methodName)
+                : new LambdaExpression(List.of("event"), new MethodCall(target, methodName, new VariableExpression("event")))
+                ;
+            }
         };
     }
 
     //
-
-    public static String toJavaSource(ClassDeclaration classDeclaration) {
-        Imports imports = new Imports(Map.<String, QName>of());
-        JavaCode.Formatter formatter = new Formatter(imports);
-        formatter.append("""
-            package %s;
-
-            """.formatted(classDeclaration.className().packageName())
-        );
-
-        String classDecl = formatter.format(classDeclaration, (f, cd) -> {
-            f.format(cd);
-        });
-        
-        formatter.format(imports);
-        formatter.newline();
-        formatter.append(classDecl);
-
-        return formatter.toString();
-    }
 
     private static final String FXML_SAMPLE = """
         <?import javafx.scene.control.*?>
@@ -350,10 +372,11 @@ public class FxmlTranslator {
         """;
 
     public static void main(String[] args) throws Exception {
+        Config config = new Config();
         if (args.length == 0) {
             Document fxmlDoc = FxmlParser.parseFxml(FXML_SAMPLE);
-            var translation = FxmlTranslator.translateFxml(fxmlDoc, QName.valueOf("no.hal.fxml.translator.TestOutput"), FxmlTranslator.class.getClassLoader());
-            System.out.println(FxmlTranslator.toJavaSource(translation.builderClass()));
+            var classDeclaration = FxmlTranslator.translateFxml(fxmlDoc, QName.valueOf("no.hal.fxml.translator.TestOutput"), FxmlTranslator.class.getClassLoader(), config);
+            System.out.println(JavaCode.toJavaSource(classDeclaration));
         } else {
             Path source = Path.of(args[0]);
             Path target = (args.length >= 2 ? Path.of(args[1]) : source);
@@ -372,17 +395,23 @@ public class FxmlTranslator {
         }
     }
 
-    public static void translateFile(Path root, Path path, Path outputFolder) throws Exception {
+    public record FxmlTranslation(Path path, ClassDeclaration builderClass) {
+    }
+
+    public static FxmlTranslation translateFile(Path root, Path path, Path outputFolder) throws Exception {
         Document fxmlDoc = FxmlParser.parseFxml(path.toFile());
         try {
-            QName className = QName.valueOf(root.relativize(path).toString().replace(".fxml", "Loader").replace('/', '.'));
-            var translation = FxmlTranslator.translateFxml(fxmlDoc, className, FxmlTranslator.class.getClassLoader());
-            var javaSource = FxmlTranslator.toJavaSource(translation.builderClass());
+            Config config = new Config();
+            Path resourcePath = root.relativize(path);
+            QName className = QName.valueOf(resourcePath.toString().replace(".fxml", "Loader").replace('/', '.'));
+            var classDeclaration = FxmlTranslator.translateFxml(fxmlDoc, className, FxmlTranslator.class.getClassLoader(), config);
+            var javaSource = JavaCode.toJavaSource(classDeclaration);
             var javaPath = outputFolder.resolve(className.toString().replace(".", "/") + ".java");
             Files.write(javaPath, javaSource.getBytes());
+            return new FxmlTranslation(Path.of("/" + resourcePath.toString()), classDeclaration);
         } catch (Exception ex) {
             ex.printStackTrace();
+            throw ex;
         }
-        //System.out.println(javaSource);
     }
 }

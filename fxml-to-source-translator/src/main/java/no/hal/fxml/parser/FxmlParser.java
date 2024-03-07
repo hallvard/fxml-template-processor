@@ -166,7 +166,7 @@ public class FxmlParser {
             return new Define(parseChildElements(InstantiationElement.class));
         } else if (INCLUDE_QNAME.equals(name)) {
             parseChildElements(null);
-            return new Include(getAttributeValue(element, INCLUDE_SOURCE_QNAME));
+            return new Include(getAttributeValue(element, ID_QNAME), getAttributeValue(element, INCLUDE_SOURCE_QNAME));
         } else if (REFERENCE_QNAME.equals(name)) {
             parseChildElements(null);
             return new Reference(getAttributeValue(element, REFERENCE_SOURCE_QNAME));

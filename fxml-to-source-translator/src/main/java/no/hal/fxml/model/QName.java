@@ -32,6 +32,9 @@ public record QName(String packageName, String className) {
             }
         }
     }
+    public static QName of(Class<?> clazz) {
+        return valueOf(clazz.getName());
+    }
 
     @Override
     public String toString() {

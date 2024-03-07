@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class JavaCode {
 
@@ -75,7 +76,24 @@ public class JavaCode {
     }
 
     public sealed interface Statement
-        permits VariableDeclaration, Return, ExecutableCall, FieldAssignment {
+        permits Comment, VariableDeclaration, Return, ExecutableCall, FieldAssignment {
+    }
+
+    public record Comment(String... commentLines) implements Statement {
+        public static Comment line(String commentLine) {
+            return new Comment(commentLine);
+        }
+        public static Comment block(String commentLines) {
+            return new Comment(("\n" + commentLines + "\n").split("\n"));
+        }
+        @Override
+        public String toString() {
+            if (commentLines.length == 1) {
+                return "// " + commentLines[0];
+            } else {
+                return Stream.of(commentLines).collect(Collectors.joining("*", "/*\n", "\n*/"));
+            }
+        }
     }
 
     public record VariableDeclaration(String modifiers, TypeRef typeName, String variableName, Expression expression)
@@ -91,6 +109,9 @@ public class JavaCode {
         }
         public static VariableDeclaration instantiation(String className, String variableName) {
             return new VariableDeclaration(className, variableName, new ConstructorCall(className));
+        }
+        public static VariableDeclaration parameter(TypeRef typeName, String variableName) {
+            return new VariableDeclaration(typeName, variableName, null);
         }
         @Override
         public String toString() {
@@ -120,7 +141,7 @@ public class JavaCode {
     }
 
     public sealed interface Expression
-        permits VariableExpression, Literal, ExecutableCall, LambdaExpression, LambdaMethodReference, FieldAssignment {
+        permits VariableExpression, Literal, Cast, ExecutableCall, LambdaExpression, LambdaMethodReference, FieldAssignment {
     }
 
     public record VariableExpression(String variableName)
@@ -145,6 +166,14 @@ public class JavaCode {
             } else {
                 return "(%s)%s".formatted(clazz.getName(), literal);
             }
+        }
+    }
+
+    public record Cast(TypeRef type, Expression expression)
+        implements Expression {
+        @Override
+        public String toString() {
+            return "((%s) %s)".formatted(type, expression);
         }
     }
 
@@ -428,7 +457,11 @@ public class JavaCode {
                 append(varDecl.modifiers());
                 space();
             }
-            format(varDecl.typeName());
+            if (varDecl.typeName() != null) {
+                format(varDecl.typeName());
+            } else {
+                append("var");
+            }
             space();
             append(varDecl.variableName());
             if (varDecl.expression() != null) {
@@ -440,6 +473,18 @@ public class JavaCode {
         public void formatStatement(Statement statement) {
             indent();
             switch (statement) {
+                case Comment(String[] commentLines) -> {
+                    if (commentLines.length == 1) {
+                        append("// ");
+                        append(commentLines[0]);
+                    } else {
+                        append("/*"); append(commentLines[0]); newline();
+                        for (int i = 1; i < commentLines.length - 2; i++) {
+                            append(" * "); append(commentLines[i]); newline();
+                        }
+                        append(commentLines[commentLines.length - 1]); append(" */"); newline();
+                    }
+                }
                 case VariableDeclaration varDecl -> format(varDecl);
                 case Return ret -> {
                     append("return ");
@@ -448,7 +493,10 @@ public class JavaCode {
                 case ExecutableCall call -> formatExpression(call);
                 case FieldAssignment fieldAssignment -> formatExpression(fieldAssignment);
             }
-            append(";\n");
+            if (! (statement instanceof Comment)) {
+                append(";");
+            }
+            newline();
         }
 
         public <T> void formatList(String prefix, List<T> items, String suffix, BiConsumer<Formatter, T> formatter) {
@@ -481,6 +529,13 @@ public class JavaCode {
                     } else {
                         append(literal);
                     }
+                }
+                case Cast(TypeRef type, Expression expr) -> {
+                    append("((");
+                    format(type);
+                    append(") ");
+                    formatExpression(expr);
+                    append(")");
                 }
                 case MethodCall(ObjectTarget target, String methodName, List<Expression> arguments) -> {
                     if (target != null) {
@@ -540,5 +595,25 @@ public class JavaCode {
                 append(";\n");
             });
         }
+    }
+
+    public static String toJavaSource(ClassDeclaration classDeclaration) {
+        Imports imports = new Imports(Map.<String, QName>of());
+        JavaCode.Formatter formatter = new Formatter(imports);
+        formatter.append("""
+            package %s;
+
+            """.formatted(classDeclaration.className().packageName())
+        );
+
+        String classDecl = formatter.format(classDeclaration, (f, cd) -> {
+            f.format(cd);
+        });
+        
+        formatter.format(imports);
+        formatter.newline();
+        formatter.append(classDecl);
+
+        return formatter.toString();
     }
 }

@@ -87,5 +87,28 @@
         </plugin>
       </plugins>
     </pluginManagement>
+
+    <plugins>
+      <plugin>
+        <groupId>no.hal.fxml</groupId>
+        <artifactId>fxml-maven-plugin</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <executions>
+          <execution>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>fxml</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+        <!--
+          <resourceDirectory>src/main/resource</resourceDirectory>
+          <sourceDirectory>${build.sourceDirectory}</sourceDirectory>
+        -->
+          <fxLoaderProviderClass>no.hal.fxml.quarkus.FxSampleLoaderProvider</fxLoaderProviderClass>
+        </configuration>
+      </plugin>
+    </plugins>
   </build>
 </project>

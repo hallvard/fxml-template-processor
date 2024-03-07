@@ -2,6 +2,8 @@ package no.hal.fxml.model;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public record TypeRef(QName typeName, List<TypeRef> typeParams) {
 
@@ -37,6 +39,9 @@ public record TypeRef(QName typeName, List<TypeRef> typeParams) {
 
     public static TypeRef valueOf(String typeRef) {
         return new TypeRefParser(typeRef).parse();
+    }
+    public static TypeRef of(Class<?> clazz, Class<?>... typeParams) {
+        return valueOf(clazz.getName() + Stream.of(typeParams).map(tp -> tp != null ? tp.getName() : "?").collect(Collectors.joining(", ", "<", ">")));
     }
 }
 

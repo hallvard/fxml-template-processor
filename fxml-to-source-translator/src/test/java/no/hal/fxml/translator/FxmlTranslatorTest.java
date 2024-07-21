@@ -46,9 +46,9 @@ public class FxmlTranslatorTest {
         } catch(Exception ex) {
             ex.printStackTrace();
         } finally {
-            System.out.println(
-                JavaCode.toJavaSource(actual)
-            );
+            // System.out.println(
+            //     JavaCode.toJavaSource(actual)
+            // );
         }
         testFxmlTranslator(actual, expectedBuilder);
     }

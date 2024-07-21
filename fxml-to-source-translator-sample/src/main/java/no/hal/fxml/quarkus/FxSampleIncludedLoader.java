@@ -5,7 +5,7 @@ import javafx.scene.control.Label;
 import no.hal.fxml.runtime.AbstractFxLoader;
 import java.util.Map;
 
-public class FxSampleIncludedLoader extends AbstractFxLoader<Label, Object> {
+public class FxSampleIncludedLoader extends AbstractFxLoader<Label, java.lang.Object> {
 
    public FxSampleIncludedLoader() {
       super();

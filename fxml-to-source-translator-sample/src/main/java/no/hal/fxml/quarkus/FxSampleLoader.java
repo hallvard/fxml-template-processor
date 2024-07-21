@@ -3,11 +3,13 @@ package no.hal.fxml.quarkus;
 import no.hal.fxml.quarkus.FxSampleControllerHelper;
 import no.hal.fxml.runtime.FxLoaderContext;
 import javafx.scene.control.Button;
+import javafx.scene.Node;
 import no.hal.fxml.quarkus.FxSampleController;
 import javafx.scene.control.TextField;
 import no.hal.fxml.runtime.AbstractFxLoader;
 import javafx.scene.layout.AnchorPane;
 import java.util.Map;
+import no.hal.fxml.runtime.FxLoader;
 
 public class FxSampleLoader extends AbstractFxLoader<AnchorPane, FxSampleController> {
 
@@ -43,8 +45,8 @@ public class FxSampleLoader extends AbstractFxLoader<AnchorPane, FxSampleControl
       button.setMnemonicParsing(false);
       anchorPane.getChildren().add(button);
       // <fx:include source="FxSampleIncluded.fxml"/>
-      var fxIncludeLoader = fxLoaderContext.loadFxml("FxSampleIncluded.fxml");
-      var fxIncludeRoot = fxIncludeLoader.getRoot();
+      FxLoader<?, ?> fxIncludeLoader = fxLoaderContext.loadFxml("FxSampleIncluded.fxml");
+      Node fxIncludeRoot = fxIncludeLoader.getRoot();
       this.setFxmlObject("lblMessage", fxIncludeRoot);
       this.setFxmlObject("lblMessageController", fxIncludeLoader.getController());
       anchorPane.getChildren().add(fxIncludeRoot);

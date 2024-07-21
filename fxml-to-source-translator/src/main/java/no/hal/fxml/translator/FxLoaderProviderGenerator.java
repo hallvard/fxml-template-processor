@@ -17,7 +17,7 @@ import no.hal.fxml.translator.FxmlTranslator.FxmlTranslation;
 
 public class FxLoaderProviderGenerator {
     
-    public ClassDeclaration generateFxLoaderProvider(List<FxmlTranslation> translations, QName providerClassName) {
+    public ClassDeclaration generateFxLoaderProvider(QName providerClassName, List<FxmlTranslation> translations) {
         ClassDeclaration providerClass = new ClassDeclaration(providerClassName, TypeRef.valueOf("no.hal.fxml.runtime.DefaultFxLoaderProvider"), null, List.of(
             new ConstructorDeclaration("public", providerClassName.className(), List.of(), List.of(
                 new MethodCall((ObjectTarget) null, "super",

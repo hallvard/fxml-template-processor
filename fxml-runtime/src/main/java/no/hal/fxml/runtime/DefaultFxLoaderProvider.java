@@ -10,16 +10,16 @@ public class DefaultFxLoaderProvider implements FxLoaderProvider {
     protected Map<Path, Supplier<FxLoader<?, ?>>> fxLoaderMap = new HashMap<>();
 
     public DefaultFxLoaderProvider(Map<Path, Supplier<FxLoader<?, ?>>> fxLoaderMap) {
-        fxLoaderMap.putAll(fxLoaderMap);
+        this.fxLoaderMap.putAll(fxLoaderMap);
     }
 
     @Override
     public boolean test(Path location) {
-        return fxLoaderMap.containsKey(location);
+        return this.fxLoaderMap.containsKey(location);
     }
 
     @Override
     public FxLoader<?, ?> getFxLoader(Path location) {
-        return fxLoaderMap.get(location).get();
+        return this.fxLoaderMap.get(location).get();
     }
 }

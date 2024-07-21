@@ -1,9 +1,12 @@
 package no.hal.fxml.translator;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.codehaus.commons.compiler.CompilerFactoryFactory;
@@ -25,28 +28,39 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.Pane;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
-import no.hal.fxml.model.FxmlCode.Document;
 import no.hal.fxml.model.JavaCode;
 import no.hal.fxml.model.JavaCode.ClassDeclaration;
 import no.hal.fxml.model.QName;
 import no.hal.fxml.parser.FxmlParser;
 import no.hal.fxml.runtime.AbstractFxControllerHelper;
+import no.hal.fxml.runtime.DefaultFxLoaderContext;
+import no.hal.fxml.runtime.DefaultFxLoaderProvider;
 import no.hal.fxml.runtime.FxLoader;
+import no.hal.fxml.runtime.FxLoaderContext;
+import no.hal.fxml.runtime.FxLoaderProvider;
 
 public class FxmlTranslatorAppTest extends ApplicationTest {
     
-    private QName className = QName.valueOf("no.hal.fxml.translator.TestOutput");
+    private String packageName = "no.hal.fxml.translator";
+    private QName className = new QName(packageName, "FxLoader1");
+    private QName classNameIncluded = new QName(packageName, "FxLoader1Included");
+    private QName fxLoaderProviderClassName = new QName(packageName, "FxLoader1Provider");
 
     private FxLoader<?, ?> fxLoader;
 
     @Override
     public void start(Stage stage) throws Exception {
-        Document fxmlDoc = FxmlParser.parseFxml(FXML_SAMPLE);
         FxmlTranslator.Config config = new FxmlTranslator.Config(true, false, true);
         var cl = this.getClass().getClassLoader();
-        ClassDeclaration fxLoaderClass = FxmlTranslator.translateFxml(fxmlDoc, className, cl, config);
+        ClassDeclaration fxLoaderClass = FxmlTranslator.translateFxml(FxmlParser.parseFxml(FXML_SAMPLE), className, cl, config);
         String javaSource = JavaCode.toJavaSource(fxLoaderClass);
-        System.out.println(javaSource);
+        ClassDeclaration fxLoaderClassIncluded = FxmlTranslator.translateFxml(FxmlParser.parseFxml(FXML_SAMPLE_INCLUDED), classNameIncluded, cl, config);
+        String javaSourceIncluded = JavaCode.toJavaSource(fxLoaderClassIncluded);
+
+        ClassDeclaration fxLoaderProvider = new FxLoaderProviderGenerator().generateFxLoaderProvider(fxLoaderProviderClassName, List.of(
+            new FxmlTranslator.FxmlTranslation(Path.of(name2Resource(packageName) + "/included.fxml"), fxLoaderClassIncluded)
+        ));
+        String fxLoaderProviderSource = JavaCode.toJavaSource(fxLoaderProvider);
 
         ICompiler compiler = CompilerFactoryFactory.getDefaultCompilerFactory(cl).newCompiler();
         // Store generated .class files in a Map:
@@ -55,13 +69,28 @@ public class FxmlTranslatorAppTest extends ApplicationTest {
  
         // Now compile two units from strings:
         compiler.compile(new Resource[] {
-            new StringResource("no/hal/fxml/translator/TestOutput.java", javaSource)
+            new StringResource(className2Resource(className), javaSource),
+            new StringResource(className2Resource(classNameIncluded), javaSourceIncluded)
+            // new StringResource(className2Resource(fxLoaderProviderClassName), fxLoaderProviderSource)
         });
         ClassLoader cl2 = new ResourceFinderClassLoader(new MapResourceFinder(classes), cl);
         fxLoader = (FxLoader<?, ?>) cl2.loadClass(className.toString()).getConstructor().newInstance();
-        Pane pane = (Pane) fxLoader.load(null);
+        FxLoader<?, ?> fxLoaderIncluded = (FxLoader<?, ?>) cl2.loadClass(classNameIncluded.toString()).getConstructor().newInstance();
+
+        FxLoaderContext fxLoaderContext = new DefaultFxLoaderContext(Path.of(name2Resource(packageName)),
+            // (FxLoaderProvider) cl2.loadClass(fxLoaderProviderClassName.toString()).getConstructor().newInstance()
+            new DefaultFxLoaderProvider(Map.of(Path.of(name2Resource(packageName) + "/included.fxml"), () -> fxLoaderIncluded))
+        );
+        Pane pane = (Pane) fxLoader.load(fxLoaderContext);
         stage.setScene(new Scene(pane));
         stage.show();
+    }
+
+    private String name2Resource(String name) {
+        return name.replace('.', '/');
+    }
+    private String className2Resource(QName className) {
+        return name2Resource(className.toString()) + ".java";
     }
 
     @Test
@@ -85,6 +114,17 @@ public class FxmlTranslatorAppTest extends ApplicationTest {
             fail("#answerInput isn't TextField");
         }
     }
+
+    @Test
+    public void checkControlsIncluded() {
+        assertTrue(fxLoader.getNamespace().get("included") instanceof Label);
+        FxAssert.verifyThat("#includedLabel", LabeledMatchers.hasText("included"));
+        if (lookup("#includedLabel").query() instanceof Label label) {
+            assertEquals("included", label.getText());
+        } else {
+            fail("#included isn't Label");
+        }
+    }
     
     private static String FXML_SAMPLE = """
         <?import javafx.scene.control.*?>
@@ -100,7 +140,13 @@ public class FxmlTranslatorAppTest extends ApplicationTest {
             <Label fx:id="label1" text="Hi!"/>
             <fx:reference source="answerInput"/>
             <Rectangle fill="$red"/>
+            <fx:include fx:id="included" source="included.fxml"/>
         </Pane>
+        """;
+
+        private static String FXML_SAMPLE_INCLUDED = """
+        <?import javafx.scene.control.Label?>
+        <Label fx:id="includedLabel" xmlns:fx="http://javafx.com/fxml" text="included"/>
         """;
 
     public static class Controller {

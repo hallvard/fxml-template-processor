@@ -16,7 +16,7 @@ public abstract class AbstractFxLoader<N extends Node, C> implements FxLoader<N,
         namespace.putAll(mappings);
     }
 
-    private N root;
+    private N root = null;
 
     // @Override public if FXML contains <fx:root> element
     protected void setRoot(N root) {
@@ -45,6 +45,9 @@ public abstract class AbstractFxLoader<N extends Node, C> implements FxLoader<N,
     @Override
     public N load(FxLoaderContext fxLoaderContext) {
         N node = build(fxLoaderContext);
+        if (this.root == null) {
+            this.root = node;
+        }
         this.controller = createController();
         if (this.controller != null) {
             initializeController();

@@ -20,7 +20,7 @@ public record QName(String packageName, String className) {
     public static QName valueOf(String name) {
         int pos = name.lastIndexOf('.');
         if (pos < 0) {
-            if (! Character.isUpperCase(name.charAt(0))) {
+            if (Character.isLowerCase(name.charAt(0))) {
                 throw new IllegalArgumentException("Class name must start with uppercase letter: " + name);
             }
             return new QName(name);

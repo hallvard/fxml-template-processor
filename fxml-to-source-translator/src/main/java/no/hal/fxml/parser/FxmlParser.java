@@ -123,14 +123,33 @@ public class FxmlParser {
 
     private final static javax.xml.namespace.QName ID_QNAME = new javax.xml.namespace.QName(FXML_NAMESPACE_URI, FXMLLoader.FX_ID_ATTRIBUTE);
     private final static javax.xml.namespace.QName CONTROLLER_QNAME = new javax.xml.namespace.QName(FXML_NAMESPACE_URI, FXMLLoader.FX_CONTROLLER_ATTRIBUTE);
+    
+    private final static String JAVAFX_NS_URI_PREFIX = "http://javafx.com/javafx/";
 
     private final static Constructor constructorInstantiation = new Constructor();
+
+    private boolean isJavafxQName(javax.xml.namespace.QName name) {
+        var nsUri = name.getNamespaceURI();
+        if (nsUri == null || nsUri.equals(XMLConstants.NULL_NS_URI)) {
+            return true;
+        }
+        if (nsUri.startsWith(JAVAFX_NS_URI_PREFIX)) {
+            var versionPart = nsUri.substring(JAVAFX_NS_URI_PREFIX.length());
+            try {
+                var version = Integer.parseInt(versionPart);
+                return version >= 6;
+            } catch (NumberFormatException e) {
+                return false;
+            }
+        }
+        return false;
+    }
 
     private FxmlElement parseStartElement(StartElement element) throws XMLStreamException {
         Attribute idAttr = element.getAttributeByName(ID_QNAME);
         String fxId = (idAttr != null ? idAttr.getValue() : null);
         javax.xml.namespace.QName name = element.getName();
-        if (name.getNamespaceURI() == XMLConstants.NULL_NS_URI) {
+        if (isJavafxQName(name)) {
             if (Character.isUpperCase(name.getLocalPart().charAt(0))) {
                 // class name
                 Instantiation instantiation = instantiationFor(element, FACTORY_QNAME, Factory::new)

@@ -27,7 +27,7 @@ public class FxmlParserTest {
     }
 
     @Test
-    public void testFxmlParser() throws Exception {
+    public void testFxmlWithAllFeatures() throws Exception {
         testFxmlParser("""
             <?xml version="1.0" encoding="UTF-8"?>
             <?import javafx.scene.control.*?>
@@ -87,6 +87,36 @@ public class FxmlParserTest {
                         new InstantiationElement(new QName("Rectangle"), new Constructor(), null,
                             List.of(
                                 new PropertyValue("fill", new ValueExpression.IdReference("red"))
+                            )
+                        )
+                    )
+                ),
+                null
+            )
+        );
+    }
+
+    @Test
+    public void testFxmlWithXmlns() throws Exception {
+        testFxmlParser("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <?import javafx.scene.control.Label?>
+            <?import javafx.scene.layout.Pane?>
+        
+            <Pane xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml">
+                <Label fx:id="label1" text="Hi!"/>
+            </Pane>
+            """,
+            new Document(
+                List.of(
+                    new Import(new QName("javafx.scene.control", "Label"), false),
+                    new Import(new QName("javafx.scene.layout", "Pane"), false)
+                ),
+                new InstantiationElement(new QName("Pane"), new Constructor(), null,
+                    List.of(
+                        new InstantiationElement(new QName("Label"), new Constructor(), "label1",
+                            List.of(
+                                new PropertyValue("text", new ValueExpression.String("Hi!"))
                             )
                         )
                     )

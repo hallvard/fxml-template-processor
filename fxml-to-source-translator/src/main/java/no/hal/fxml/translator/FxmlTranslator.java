@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 
 import javafx.scene.Node;
@@ -65,7 +66,7 @@ public class FxmlTranslator {
         boolean useCastObject
     ) {
         public Config() {
-            this(true, true, false);
+            this(true, false, false);
         }
     }
 
@@ -176,6 +177,7 @@ public class FxmlTranslator {
             }
             case InstantiationElement instantiationElement -> {
                 var instanceClass = classResolver.resolve(instantiationElement.className());
+                Objects.requireNonNull(instanceClass, "Couldn't resolve class for instantiation: " + instantiationElement.className());
                 if (this.rootType == null) {
                     this.rootType = QName.of(instanceClass);
                 }
@@ -405,7 +407,7 @@ public class FxmlTranslator {
             Path resourcePath = root.relativize(path);
             QName className = QName.valueOf(resourcePath.toString().replace(".fxml", "Loader").replace('/', '.'));
             var classDeclaration = FxmlTranslator.translateFxml(fxmlDoc, className, FxmlTranslator.class.getClassLoader(), config);
-            var javaSource = JavaCode.toJavaSource(classDeclaration);
+            var javaSource = JavaCode.toJavaSource(classDeclaration, "// generated from %s".formatted(resourcePath));
             var javaPath = outputFolder.resolve(className.toString().replace(".", "/") + ".java");
             Files.write(javaPath, javaSource.getBytes());
             return new FxmlTranslation(Path.of("/" + resourcePath.toString()), classDeclaration);

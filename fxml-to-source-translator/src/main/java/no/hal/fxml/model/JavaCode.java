@@ -1,5 +1,6 @@
 package no.hal.fxml.model;
 
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -597,7 +598,7 @@ public class JavaCode {
         }
     }
 
-    public static String toJavaSource(ClassDeclaration classDeclaration) {
+    public static String toJavaSource(ClassDeclaration classDeclaration, String classComment) {
         Imports imports = new Imports(Map.<String, QName>of());
         JavaCode.Formatter formatter = new Formatter(imports);
         formatter.append("""
@@ -612,8 +613,15 @@ public class JavaCode {
         
         formatter.format(imports);
         formatter.newline();
+        if (classComment != null) {
+            formatter.append(classComment);
+            formatter.newline();
+        }
         formatter.append(classDecl);
 
         return formatter.toString();
+    }
+    public static String toJavaSource(ClassDeclaration classDeclaration) {
+        return toJavaSource(classDeclaration, null);
     }
 }

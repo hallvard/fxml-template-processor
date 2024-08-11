@@ -11,6 +11,7 @@ import javafx.scene.layout.AnchorPane;
 import java.util.Map;
 import no.hal.fxml.runtime.FxLoader;
 
+// generated from no/hal/fxml/quarkus/FxSample.fxml
 public class FxSampleLoader extends AbstractFxLoader<AnchorPane, FxSampleController> {
 
    public FxSampleLoader() {
@@ -27,18 +28,22 @@ public class FxSampleLoader extends AbstractFxLoader<AnchorPane, FxSampleControl
       anchorPane.setPrefHeight(188.0);
       anchorPane.setPrefWidth(406.0);
       anchorPane.setId("AnchorPane");
+      // <fx:define>
+      // <String fx:id="strMessageFormat">
+      java.lang.String string = java.lang.String.valueOf("Hello, %s!");
+      this.setFxmlObject("strMessageFormat", string);
       // <TextField fx:id="txtName">
       TextField textField = new TextField();
       this.setFxmlObject("txtName", textField);
       textField.setId("txtName");
-      textField.setOnAction(this.controllerHelper::updateMessage1);
+      textField.setOnAction(event -> this.controllerHelper.updateMessage1(event));
       textField.setPrefWidth(200.0);
       textField.setLayoutX(14.0);
       textField.setLayoutY(14.0);
       anchorPane.getChildren().add(textField);
       // <Button>
       Button button = new Button();
-      button.setOnAction(this.controllerHelper::updateMessage2);
+      button.setOnAction(event -> this.controllerHelper.updateMessage2(event));
       button.setLayoutX(226.0);
       button.setLayoutY(15.0);
       button.setText("Click!");

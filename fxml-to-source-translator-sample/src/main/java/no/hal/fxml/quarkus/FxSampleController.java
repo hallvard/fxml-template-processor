@@ -10,9 +10,15 @@ public class FxSampleController {
     @FXML
     Label lblMessage;
 
+    private TextField nameTextField;
+
     @FXML
     void setTxtName(TextField tf) {
+        nameTextField = tf;
     }
+
+    @FXML
+    String strMessageFormat;
 
     @FXML
     void initialize() {
@@ -20,9 +26,11 @@ public class FxSampleController {
 
     @FXML
     void updateMessage1() {
+        lblMessage.setText(strMessageFormat.formatted(nameTextField.getText()));
     }
 
     @FXML
     void updateMessage2(ActionEvent actionEvent) {
+        updateMessage1();
     }
 }

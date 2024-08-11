@@ -1,4 +1,23 @@
-# fxml-template-processor
+# fxml-to-source-translator
+
+This repo contains an FXML to Java source translator ((`fxml-to-source-translator`)),
+so you can pre-compile FXML and load it at runtime without using reflection.
+The ultimate goal is to use fxml in quarkus with minimal reflection,
+by integrating with quarkus and its [`quarkus-fx`](https://docs.quarkiverse.io/quarkus-fx/dev/index.html) extension.
+
+A supporting maven plugin (`fxml-maven-plugin`) runs the translator during a build.
+A sample project (`fxml-to-source-translator-sample`) shows how to use both.
+
+## build and run
+
+```
+mvn clean install -f fxml-runtime
+mvn clean install -f fxml-to-source-translator
+mvn clean install -f fxml-maven-plugin
+mvn clean install quarkus:build quarkus:run -f fxml-to-source-translator-sample
+```
+
+# fxml-template-processor (obsolete, since string templates were removed in Java 22)
 
 String templates (preview in Java 21) allow you to inject expression values into strings,
 so you don't need to use explicit string concatenation, StringBuilder or formatting.

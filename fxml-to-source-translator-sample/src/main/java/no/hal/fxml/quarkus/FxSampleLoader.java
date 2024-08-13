@@ -11,7 +11,7 @@ import javafx.scene.layout.AnchorPane;
 import java.util.Map;
 import no.hal.fxml.runtime.FxLoader;
 
-// generated from no/hal/fxml/quarkus/FxSample.fxml
+// // generated from no/hal/fxml/quarkus/FxSample.fxml
 public class FxSampleLoader extends AbstractFxLoader<AnchorPane, FxSampleController> {
 
    public FxSampleLoader() {

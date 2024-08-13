@@ -5,7 +5,7 @@ import javafx.scene.control.Label;
 import no.hal.fxml.runtime.AbstractFxLoader;
 import java.util.Map;
 
-// generated from no/hal/fxml/quarkus/FxSampleIncluded.fxml
+// // generated from no/hal/fxml/quarkus/FxSampleIncluded.fxml
 public class FxSampleIncludedLoader extends AbstractFxLoader<Label, java.lang.Object> {
 
    public FxSampleIncludedLoader() {

@@ -6,8 +6,29 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import no.hal.fxml.model.JavaCode.Cast;
+import no.hal.fxml.model.JavaCode.ClassDeclaration;
+import no.hal.fxml.model.JavaCode.ClassTarget;
+import no.hal.fxml.model.JavaCode.CompilationUnit;
+import no.hal.fxml.model.JavaCode.ConstructorCall;
+import no.hal.fxml.model.JavaCode.ConstructorDeclaration;
+import no.hal.fxml.model.JavaCode.ExecutableCall;
+import no.hal.fxml.model.JavaCode.ExpressionTarget;
+import no.hal.fxml.model.JavaCode.FieldAssignment;
+import no.hal.fxml.model.JavaCode.Imports;
+import no.hal.fxml.model.JavaCode.LambdaExpression;
+import no.hal.fxml.model.JavaCode.LambdaMethodReference;
+import no.hal.fxml.model.JavaCode.Literal;
+import no.hal.fxml.model.JavaCode.MethodCall;
+import no.hal.fxml.model.JavaCode.MethodDeclaration;
+import no.hal.fxml.model.JavaCode.ObjectTarget;
+import no.hal.fxml.model.JavaCode.Return;
+import no.hal.fxml.model.JavaCode.VariableDeclaration;
+import no.hal.fxml.model.JavaCode.VariableExpression;
 
 public class JavaCode {
 
@@ -15,6 +36,9 @@ public class JavaCode {
 
         public Imports {
             imports = new HashMap<>(imports);
+        }
+        public Imports() {
+            this(Map.of());
         }
 
         private boolean autoImports(QName qName) {
@@ -36,6 +60,15 @@ public class JavaCode {
                 imports.put(key, qName);
                 return true;
             }
+        }
+    }
+
+    public record CompilationUnit(Comment prePackageComment, Comment preClassComment, ClassDeclaration mainClass, ClassDeclaration... otherClasses) {
+        public CompilationUnit(Comment preClassComment, ClassDeclaration mainClass, ClassDeclaration... otherClasses) {
+            this(null, preClassComment, mainClass, otherClasses);
+        }
+        public CompilationUnit(ClassDeclaration mainClass, ClassDeclaration... otherClasses) {
+            this(null, null, mainClass, otherClasses);
         }
     }
 
@@ -304,6 +337,10 @@ public class JavaCode {
             this.imports = imports;
         }
 
+        public Formatter() {
+            this(new Imports());
+        }
+
         private StringBuilder builder = new StringBuilder();
         private int indentLevel = 0;
         private String indentString = "   ";
@@ -311,6 +348,11 @@ public class JavaCode {
         public static <T> String format(Imports imports, T t, BiConsumer<Formatter, T> format) {
             Formatter formatter = new Formatter(imports);
             format.accept(formatter, t);
+            return formatter.builder.toString();
+        }
+        public static <T> String format(Imports imports, Consumer<Formatter> format) {
+            Formatter formatter = new Formatter(imports);
+            format.accept(formatter);
             return formatter.builder.toString();
         }
 
@@ -384,6 +426,29 @@ public class JavaCode {
             format(classRef.typeName());
             if (classRef.typeParams() != null && (! classRef.typeParams().isEmpty())) {
                 formatList("<", classRef.typeParams(), ">", Formatter::format);
+            }
+        }
+
+        public void format(CompilationUnit compilationUnit) {
+            if (compilationUnit.prePackageComment() != null) {
+                formatStatement(compilationUnit.prePackageComment());
+            }
+            append("""
+                package %s;
+    
+                """.formatted(compilationUnit.mainClass().className().packageName())
+            );
+            String classDecl = format(compilationUnit.mainClass(), (f, cd) -> {
+                f.format(cd);
+            });
+            format(imports);
+            newline();
+            if (compilationUnit.preClassComment() != null) {
+                formatStatement(compilationUnit.preClassComment());
+            }
+            append(classDecl);
+            for (var classDeclaration : compilationUnit.otherClasses()) {
+                format(classDeclaration);
             }
         }
 
@@ -483,7 +548,9 @@ public class JavaCode {
                         for (int i = 1; i < commentLines.length - 2; i++) {
                             append(" * "); append(commentLines[i]); newline();
                         }
-                        append(commentLines[commentLines.length - 1]); append(" */"); newline();
+                        append(commentLines[commentLines.length - 1]);
+                        append(" */");
+                        newline();
                     }
                 }
                 case VariableDeclaration varDecl -> format(varDecl);
@@ -598,30 +665,10 @@ public class JavaCode {
         }
     }
 
-    public static String toJavaSource(ClassDeclaration classDeclaration, String classComment) {
-        Imports imports = new Imports(Map.<String, QName>of());
-        JavaCode.Formatter formatter = new Formatter(imports);
-        formatter.append("""
-            package %s;
-
-            """.formatted(classDeclaration.className().packageName())
-        );
-
-        String classDecl = formatter.format(classDeclaration, (f, cd) -> {
-            f.format(cd);
-        });
-        
-        formatter.format(imports);
-        formatter.newline();
-        if (classComment != null) {
-            formatter.append(classComment);
-            formatter.newline();
-        }
-        formatter.append(classDecl);
-
-        return formatter.toString();
+    public static String toJavaSource(CompilationUnit compilationUnit) {
+        return Formatter.format(new Imports(), formatter -> formatter.format(compilationUnit));
     }
     public static String toJavaSource(ClassDeclaration classDeclaration) {
-        return toJavaSource(classDeclaration, null);
+        return toJavaSource(new CompilationUnit(classDeclaration));
     }
 }

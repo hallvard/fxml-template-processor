@@ -45,7 +45,7 @@ public class FxmlMojo extends AbstractMojo {
                 .filter(Objects::nonNull)
                 .toList();
             var providerClass = new FxLoaderProviderGenerator().generateFxLoaderProvider(QName.valueOf(fxLoaderProviderClass), translations);
-            var javaSource = JavaCode.toJavaSource(providerClass, "// generated");
+            var javaSource = JavaCode.toJavaSource(new JavaCode.CompilationUnit(new JavaCode.Comment("// generated"), providerClass));
             var javaPath = target.resolve(providerClass.className().toString().replace(".", "/") + ".java");
             Files.write(javaPath, javaSource.getBytes());
         } catch (Exception ex) {

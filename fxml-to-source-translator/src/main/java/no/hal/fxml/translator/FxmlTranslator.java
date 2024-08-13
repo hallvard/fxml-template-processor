@@ -407,7 +407,7 @@ public class FxmlTranslator {
             Path resourcePath = root.relativize(path);
             QName className = QName.valueOf(resourcePath.toString().replace(".fxml", "Loader").replace('/', '.'));
             var classDeclaration = FxmlTranslator.translateFxml(fxmlDoc, className, FxmlTranslator.class.getClassLoader(), config);
-            var javaSource = JavaCode.toJavaSource(classDeclaration, "// generated from %s".formatted(resourcePath));
+            var javaSource = JavaCode.toJavaSource(new JavaCode.CompilationUnit(new JavaCode.Comment("// generated from %s".formatted(resourcePath)), classDeclaration));
             var javaPath = outputFolder.resolve(className.toString().replace(".", "/") + ".java");
             Files.write(javaPath, javaSource.getBytes());
             return new FxmlTranslation(Path.of("/" + resourcePath.toString()), classDeclaration);

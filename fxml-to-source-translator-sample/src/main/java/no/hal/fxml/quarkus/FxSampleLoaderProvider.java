@@ -6,7 +6,7 @@ import no.hal.fxml.runtime.DefaultFxLoaderProvider;
 import no.hal.fxml.quarkus.FxSampleLoader;
 import java.util.Map;
 
-// generated
+// // generated
 public class FxSampleLoaderProvider extends DefaultFxLoaderProvider {
 
    public FxSampleLoaderProvider() {
